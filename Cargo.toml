@@ -1,0 +1,8 @@
+[package]
+name = "websters"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+rayon = "1.0"
+rust-embed="3.0.2"
