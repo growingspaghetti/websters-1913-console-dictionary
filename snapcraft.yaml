@@ -1,0 +1,19 @@
+name: websters
+version: git
+summary: Terminal dictionary for Webster's Dictionary, 1913
+description: |
+  websters is a command line program for reading
+  Webster's Dictionary, 1913 in a terminal.
+  This program provides the full text search.
+
+confinement: devmode
+base: core18
+
+parts:
+  websters:
+    plugin: rust
+    source: https://github.com/growingspaghetti/websters-1913-console-dictionary
+
+apps:
+  websters:
+    command: bin/websters
