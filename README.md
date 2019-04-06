@@ -20,6 +20,19 @@ sudo snap install websters1913
 websters1913
 ```
 
+# Windows x64
+
+![websterswin.gif](websterswin.gif)
+
+Git bash is required.
+
+```
+curl -O https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/websters1913.exe
+./websters1913.exe
+```
+
+Compiled in Windows 7.
+
 # License
 
 Public domain. https://en.wiktionary.org/wiki/Wiktionary:Webster%27s_Dictionary,_1913
