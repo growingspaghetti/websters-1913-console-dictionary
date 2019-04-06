@@ -1,3 +1,5 @@
+# Websters dictionary, 1913 Edition ![websters1888 advertisement](https://en.wikipedia.org/wiki/Webster%27s_Dictionary#/media/File:Webster_27s_Dictionary_advertisement_-_1888_-_Project_Gutenberg_eText_13641.png)
+
 ![websters.gif](websters.gif)
 
 websters1913 is a command line program for reading Webster's Dictionary, 1913 in a terminal. This program provides the full text search. Application binary contains the dictionary data.
