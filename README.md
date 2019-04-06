@@ -1,4 +1,4 @@
-# Websters dictionary, 1913 Edition ![websters1888 advertisement](https://en.wikipedia.org/wiki/Webster%27s_Dictionary#/media/File:Webster_27s_Dictionary_advertisement_-_1888_-_Project_Gutenberg_eText_13641.png)
+# Websters dictionary, 1913 Edition <img alt="1888 websters dictionary advertisement" width="100" src="https://upload.wikimedia.org/wikipedia/commons/3/35/Webster_27s_Dictionary_advertisement_-_1888_-_Project_Gutenberg_eText_13641.png">
 
 ![websters.gif](websters.gif)
 
