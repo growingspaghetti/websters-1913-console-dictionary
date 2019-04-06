@@ -2,7 +2,7 @@
 
 ![websters.gif](websters.gif)
 
-websters1913 is a command line program for reading Webster's Dictionary, 1913 in a terminal. This program provides the full text search. Application binary contains the dictionary data.
+websters1913 is a command line program for reading Webster's Dictionary, 1913 in a terminal. This program provides the full text search. Application binary contains the dictionary data. It's using `less` as the pager.
 
 # Linux x64
 
@@ -24,7 +24,7 @@ websters1913
 
 ![websterswin.gif](websterswin.gif)
 
-Git bash is required.
+Git bash is required. 
 
 ```
 curl -O https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/websters1913.exe
