@@ -19,6 +19,7 @@ B. via snap packager, https://snapcraft.io/websters1913/
 sudo snap install websters1913
 websters1913
 ```
+Note: static binary starts up faster then the snap edition.
 
 # Windows x64
 
