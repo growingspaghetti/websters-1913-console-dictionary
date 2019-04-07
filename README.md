@@ -35,4 +35,12 @@ Compiled in Windows 7.
 
 # License
 
-Public domain. https://en.wiktionary.org/wiki/Wiktionary:Webster%27s_Dictionary,_1913
+* Public domain: https://en.wiktionary.org/wiki/Wiktionary:Webster%27s_Dictionary,_1913
+* Non commercial and research purpose only: svr-ftp.eng.cam.ac.uk/comp.speech/dictionaries/beep.tar.gz
+* Rust source code: BSD
+
+# Change logs
+
+ * 2019/04/06 v0.1.0
+ * 2019/04/07 v0.2.0 pronunciation notations have been added to the websters dictionary.
+ 
