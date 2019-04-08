@@ -16,7 +16,17 @@ parts:
     plugin: rust
     source: https://github.com/growingspaghetti/websters-1913-console-dictionary
     source-type: git
+#    stage-packages:
+#      - locales-all
+#      - fonts-sil-doulos
+#    locales-launch:
 
 apps:
   websters1913:
     command: bin/websters1913
+    environment:
+      LANG: en_US.UTF-8
+      LESSCHARSET: utf-8
+#      FONTCONFIG_PATH: $SNAP/etc/fonts
+#      FONTCONFIG_FILE: $SNAP/etc/fonts/fonts.conf
+#      XDG_DATA_HOME: $SNAP/usr/share
