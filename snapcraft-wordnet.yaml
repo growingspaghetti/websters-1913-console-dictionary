@@ -1,0 +1,25 @@
+name: wordnet2
+version: git
+summary: Terminal dictionary for WordNet 2.0
+description: |
+  wordnet2 is a command line program for reading
+  WordNet 2.0 in a terminal.
+  This program provides the full text search.
+
+grade: stable
+confinement: strict
+#confinement: devmode
+#base: core18
+ 
+parts:
+  wordnet2:
+    plugin: rust
+    source: .
+    source-type: git
+
+apps:
+  wordnet2:
+    command: bin/wordnet2
+    environment:
+      LANG: en_US.UTF-8
+      LESSCHARSET: utf-8
