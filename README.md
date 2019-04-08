@@ -13,13 +13,21 @@ wget https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-di
 ./websters1913
 ```
 
+There's little chance your terminal locale is not utf8.
+
+```
+export LANG="en_US.UTF-8"; export LESSCHARSET="utf-8"; ./websters1913
+```
+
+DejaVu fonts have got all glyphs.
+
 B. via snap packager, https://snapcraft.io/websters1913/
 
 ```
 sudo snap install websters1913
 websters1913
 ```
-Note: static binary starts up faster then the snap edition.
+Note: static binary starts up faster than the snap edition.
 
 # Windows x64
 
@@ -38,7 +46,7 @@ Compiled in Windows 7.
 
 * Public domain: https://en.wiktionary.org/wiki/Wiktionary:Webster%27s_Dictionary,_1913
 * Non commercial and research purpose only: svr-ftp.eng.cam.ac.uk/comp.speech/dictionaries/beep.tar.gz
-* Rust source code: BSD
+* Rust source code: MIT
 
 # Change logs
 
