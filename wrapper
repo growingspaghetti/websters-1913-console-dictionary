@@ -1,6 +1,0 @@
-#!/bin/sh
-export FONTCONFIG_PATH=$SNAP/etc/fonts
-export FONTCONFIG_FILE=$SNAP/etc/fonts/fonts.conf
-export XDG_DATA_HOME=$SNAP/usr/share
-exec "$SNAP/bin/websters1913" "$@"
-
