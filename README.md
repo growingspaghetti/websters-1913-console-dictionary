@@ -40,17 +40,20 @@ wget https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-di
 ./wordnet2
 ```
 ```
-sudo snap install wordnet2
+sudo snap install wordnet2 #https://snapcraft.io/wordnet2/
 wordnet2
 ```
 
 ## WordNet2.0+Websters1913
+
+![wn2websters1913.gif](wn2websters1913.gif)
+
 ```
 wget https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/wn2websters1913
 ./wn2websters1913
 ```
 ```
-sudo snap install wn2websters1913
+sudo snap install wn2websters1913 #https://snapcraft.io/wn2websters1913/
 wn2websters1913
 ```
 
