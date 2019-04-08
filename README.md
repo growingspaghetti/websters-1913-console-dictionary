@@ -6,6 +6,8 @@ websters1913 is a command line program for reading Webster's Dictionary, 1913 in
 
 # Linux x64
 
+## Websters
+
 A. static binary
 
 ```
@@ -19,11 +21,6 @@ There's little chance your terminal locale is not utf8.
 export LANG="en_US.UTF-8"; export LESSCHARSET="utf-8"; ./websters1913
 ```
 
- - Application for WordNet2.0 is also available.
-   https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/wordnet2
- - Application for WordNet2.0+Websters1913 is also available.
-   https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/wn2websters1913
-
 DejaVu fonts have got all glyphs.
 
 B. via snap packager, https://snapcraft.io/websters1913/
@@ -33,6 +30,29 @@ sudo snap install websters1913
 websters1913
 ```
 Note: static binary starts up faster than the snap edition.
+
+## Wordnet 2.0
+
+![wordnet2.gif](wordnet2.gif)
+
+```
+wget https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/wordnet2
+./wordnet2
+```
+```
+sudo snap install wordnet2
+wordnet2
+```
+
+## WordNet2.0+Websters1913
+```
+wget https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/wn2websters1913
+./wn2websters1913
+```
+```
+sudo snap install wn2websters1913
+wn2websters1913
+```
 
 # Windows x64
 
