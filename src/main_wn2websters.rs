@@ -30,11 +30,12 @@ fn print_license() {
 }
 
 fn main() {
-    let wn_content = std::str::from_utf8(Asset::get("wordnet-ipa.txt").unwrap().as_ref())
-        .unwrap()
-        .lines()
-        .map(String::from)
-        .collect::<Vec<String>>();
+    let wn_content =
+        std::str::from_utf8(Asset::get("wordnet-ipa-line-break-80.txt").unwrap().as_ref())
+            .unwrap()
+            .lines()
+            .map(String::from)
+            .collect::<Vec<String>>();
 
     let wb_content = std::str::from_utf8(Asset::get("websters-1913-ipa.txt").unwrap().as_ref())
         .unwrap()
@@ -43,7 +44,6 @@ fn main() {
         .collect::<Vec<String>>();
 
     println!(
-        "{}",
         "########################################################################
 #                                                                      #
 #                 Webster's Dictionary 1913 Edition                    #
@@ -106,31 +106,8 @@ Type \x1b[1;33m:license\x1b[0m↵ to print that on the screen.
             continue;
         }
 
-        let high_light_left = format!(
-            "\x1b[0m\x1b[1;32m{}\x1b[0m\x1b[1;36m",
-            input.replace("\t", "")
-        );
-        let high_light_right = format!("\x1b[1;32m{}\x1b[0m", input);
-
-        for content in vec![&wn_content, &wb_content] {
-            let res = content
-                .par_iter()
-                .filter(|l| l.contains(&input))
-                .map(|l| {
-                    let tabi = l.find('\t').unwrap();
-                    let left = &l[0..tabi];
-                    let right = &l[tabi + 1..];
-                    format!(
-                        "\x1b[1;36m{}\x1b[0m  {}",
-                        left.replace(&input.replace("\t", ""), &high_light_left),
-                        right
-                            .replace("\\n", "\n")
-                            .replace("<ħ>", "\x1b[9m")
-                            .replace("</ħ>", "\x1b[0m")
-                            .replace(&input, &high_light_right)
-                    )
-                })
-                .collect::<Vec<String>>();
+        for content in &[&wn_content, &wb_content] {
+            let res = filter(&content, &input);
 
             let mut child = Command::new("less")
                 .arg("-R")
@@ -141,23 +118,47 @@ Type \x1b[1;33m:license\x1b[0m↵ to print that on the screen.
                 .spawn()
                 .unwrap();
 
-            match child
+            if child
                 .stdin
                 .as_mut()
                 .ok_or("Child process stdin has not been captured!")
                 .unwrap()
                 .write_all(res.join("\n").as_bytes())
-            {
-                Err(_) => (),
-                Ok(_) => (),
-            }
+                .is_err()
+            {}
 
-            match child.wait() {
-                Err(why) => panic!("{}", why),
-                Ok(_) => (),
+            if let Err(why) = child.wait() {
+                panic!("{}", why)
             }
         }
     }
+}
+
+fn filter(content: &[String], input: &str) -> Vec<String> {
+    let high_light_left = format!(
+        "\x1b[0m\x1b[1;32m{}\x1b[0m\x1b[1;36m",
+        input.replace("\t", "")
+    );
+    let high_light_right = format!("\x1b[1;32m{}\x1b[0m", input);
+
+    content
+        .par_iter()
+        .filter(|l| l.contains(input))
+        .map(|l| {
+            let tabi = l.find('\t').unwrap();
+            let left = &l[0..tabi];
+            let right = &l[tabi + 1..];
+            format!(
+                "\x1b[1;36m{}\x1b[0m  {}",
+                left.replace(&input.replace("\t", ""), &high_light_left),
+                right
+                    .replace("\\n", "\n")
+                    .replace("<ħ>", "\x1b[9m")
+                    .replace("</ħ>", "\x1b[0m")
+                    .replace(&input, &high_light_right)
+            )
+        })
+        .collect::<Vec<String>>()
 }
 
 fn get_input(prompt: &str) -> String {
