@@ -6,7 +6,23 @@ websters1913 is a command line program for reading Webster's Dictionary, 1913 in
 
 # Linux x64
 
-## Websters
+## WordNet2.0 + Websters1913
+
+![wn2websters1913.gif](wn2websters1913.gif)
+
+```
+wget https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/wn2websters1913
+./wn2websters1913
+```
+
+or
+
+```
+sudo snap install wn2websters1913 #https://snapcraft.io/wn2websters1913/
+wn2websters1913
+```
+
+## Websters 1913
 
 A. static binary
 
@@ -44,28 +60,17 @@ sudo snap install wordnet2 #https://snapcraft.io/wordnet2/
 wordnet2
 ```
 
-## WordNet2.0+Websters1913
 
-![wn2websters1913.gif](wn2websters1913.gif)
-
-```
-wget https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/wn2websters1913
-./wn2websters1913
-```
-```
-sudo snap install wn2websters1913 #https://snapcraft.io/wn2websters1913/
-wn2websters1913
-```
 
 # Windows x64
 
-![websterswin.gif](websterswin.gif)
+![winwn2webster.gif](winwn2webster.gif)
 
 Git bash is required. 
 
 ```
-curl -O https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/websters1913.exe
-./websters1913.exe
+curl -O https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/wn2websters1913.exe
+./wn2websters1913.exe
 ```
 
 Compiled in Windows 7.
@@ -94,4 +99,4 @@ OTHER RIGHTS.
  * 2019/04/06 v0.1.0
  * 2019/04/07 v0.2.0 pronunciation notations have been added to the websters dictionary.
  * 2019/04/08 created binaries for wordnet 2.0 as well as websters 1913.
- 
+ * 2019/12/14 applied line-wrapping on the wordnet data
