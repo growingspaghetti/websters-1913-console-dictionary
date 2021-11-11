@@ -8,7 +8,7 @@ websters1913 is a command line program for reading Webster's Dictionary, 1913 in
 
 ![layout](./new-termina-layout.png)
 
-(using in the terminal of VSCode)
+(using in the terminal of my VSCode)
 
 Download: https://github.com/growingspaghetti/websters-1913-console-dictionary/releases
 
@@ -55,5 +55,5 @@ OTHER RIGHTS.
  * 2021/11/11 v0.3.0
    - upgraded libraries
    - cleaned the text of webster's dictionary
-   - changed the layout of WordNet
+   - changed the layout of wordnet
    - entries start with the searching word come on top
