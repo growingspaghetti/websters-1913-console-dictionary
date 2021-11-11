@@ -6,72 +6,24 @@ websters1913 is a command line program for reading Webster's Dictionary, 1913 in
 
 # Linux x64
 
-## WordNet2.0 + Websters1913
+![layout](./new-termina-layout.png)
 
-![wn2websters1913.gif](wn2websters1913.gif)
+(using in the terminal of VSCode)
 
-```
-wget https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/wn2websters1913
-./wn2websters1913
-```
-
-or
-
-```
-sudo snap install wn2websters1913 #https://snapcraft.io/wn2websters1913/
-wn2websters1913
-```
-
-## Websters 1913
-
-A. static binary
-
-```
-wget https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/websters1913
-./websters1913
-```
-
-There's little chance your terminal locale is not utf8.
-
-```
-export LANG="en_US.UTF-8"; export LESSCHARSET="utf-8"; ./websters1913
-```
-
-DejaVu fonts have got all glyphs.
-
-B. via snap packager, https://snapcraft.io/websters1913/
-
-```
-sudo snap install websters1913
-websters1913
-```
-Note: static binary starts up faster than the snap edition.
-
-## Wordnet 2.0
-
-![wordnet2.gif](wordnet2.gif)
-
-```
-wget https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/wordnet2
-./wordnet2
-```
-```
-sudo snap install wordnet2 #https://snapcraft.io/wordnet2/
-wordnet2
-```
-
-
+Download: https://github.com/growingspaghetti/websters-1913-console-dictionary/releases
 
 # Windows x64
 
 ![winwn2webster.gif](winwn2webster.gif)
 
-Git bash is required. 
+Use Git bash.
 
 ```
 curl -O https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/wn2websters1913.exe
 ./wn2websters1913.exe
 ```
+
+(only old version is available.)
 
 Compiled in Windows 7.
 
@@ -100,3 +52,8 @@ OTHER RIGHTS.
  * 2019/04/07 v0.2.0 pronunciation notations have been added to the websters dictionary.
  * 2019/04/08 created binaries for wordnet 2.0 as well as websters 1913.
  * 2019/12/14 applied line-wrapping on the wordnet data
+ * 2021/11/11 v0.3.0
+   - upgraded libraries
+   - cleaned the text of webster's dictionary
+   - changed the layout of WordNet
+   - entries start with the searching word come on top
