@@ -4,24 +4,20 @@
 
 websters1913 is a command line program for reading Webster's Dictionary, 1913 in a terminal. This program provides the full text search. Application binary contains the dictionary data. It's using `less` as the pager.
 
+Download: https://github.com/growingspaghetti/websters-1913-console-dictionary/releases
+
 # Linux x64
 
 ![layout](./new-termina-layout.png)
 
 (using in the terminal of my VSCode)
 
-Download: https://github.com/growingspaghetti/websters-1913-console-dictionary/releases
 
 # Windows x64
 
 ![winwn2webster.gif](winwn2webster.gif)
 
 Use Git bash.
-
-```
-curl -O https://raw.githubusercontent.com/growingspaghetti/websters-1913-console-dictionary/master/wn2websters1913.exe
-./wn2websters1913.exe
-```
 
 (only old version is available.)
 
