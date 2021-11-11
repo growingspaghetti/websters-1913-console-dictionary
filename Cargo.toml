@@ -1,8 +1,8 @@
 [package]
 name = "websters1913"
 version = "0.2.0"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-rayon = "1.0"
-rust-embed="3.0.2"
+rayon = "1.5"
+rust-embed="6.1.0"
