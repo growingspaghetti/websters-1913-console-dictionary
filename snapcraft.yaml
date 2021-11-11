@@ -9,8 +9,7 @@ description: |
 grade: stable
 confinement: strict
 #confinement: devmode
-#base: core18
- 
+base: core18
 parts:
   websters1913:
     plugin: rust
