@@ -1,8 +1,7 @@
 [package]
-name = "websters1913"
+name = "eiji-sub"
 version = "0.3.0"
 edition = "2021"
 
 [dependencies]
 rayon = "1.5"
-rust-embed="6.1.0"
