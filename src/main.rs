@@ -87,7 +87,7 @@ fn setup_eijiro() {
     println!("conversion finished successfully.");
 }
 
-fn edict_eijiro() -> Vec<String> {
+fn edict_eijiro<'a>(edict_text: &'a mut String) -> Vec<&'a str> {
     let gzip_path = Path::new(EIJIROGZIP);
     let source_path = Path::new(EIJIRO);
     println!("{} exists:{}", EIJIROGZIP, gzip_path.exists());
@@ -96,16 +96,15 @@ fn edict_eijiro() -> Vec<String> {
         setup_eijiro();
     }
     if !gzip_path.exists() {
-        return EDICT.lines().map(String::from).collect();
+        return edict_text.lines().collect();
     }
     let r = std::fs::File::open(gzip_path).unwrap();
     let mut decoder = GzDecoder::new(r);
-    let mut s = EDICT.to_string();
-    decoder.read_to_string(&mut s).unwrap();
-    s.lines().map(String::from).collect::<Vec<String>>()
+    decoder.read_to_string(edict_text).unwrap();
+    edict_text.lines().collect()
 }
 
-fn reorder<'a>(hits: &Vec<&'a String>, input: String) -> Vec<&'a String> {
+fn reorder<'a>(hits: &Vec<&'a str>, input: String) -> Vec<&'a str> {
     let mut a = vec![];
     let mut b = vec![];
     for i in 0..hits.len() {
@@ -122,10 +121,10 @@ fn reorder<'a>(hits: &Vec<&'a String>, input: String) -> Vec<&'a String> {
 fn main() {
     let subtitles = include_str!("../eiji-dict/train")
         .lines()
-        .map(String::from)
-        .collect::<Vec<String>>();
+        .collect::<Vec<&str>>();
 
-    let dicts = edict_eijiro();
+    let mut edict_text = EDICT.to_string();
+    let dicts = edict_eijiro(&mut edict_text);
 
     println!("\x1b[0m\x1b[1;32m検索文字\x1b[0m↵で検索");
     println!("\x1b[1;33mq\x1b[0mで次の辞書");
@@ -136,34 +135,35 @@ fn main() {
         if input.trim().is_empty() {
             continue;
         }
-
-        for content in &[&dicts, &subtitles] {
-            let res = filter(&content, &input);
-            let mut child = Command::new("less")
-                .arg("-R")
-                .arg("-M")
-                .arg("+Gg")
-                .arg("-s")
-                .stdin(Stdio::piped())
-                .spawn()
-                .unwrap();
-            if child
-                .stdin
-                .as_mut()
-                .ok_or("Child process stdin has not been captured!")
-                .unwrap()
-                .write_all(res.join("\n").as_bytes())
-                .is_err()
-            {}
-
-            if let Err(why) = child.wait() {
-                panic!("{}", why)
-            }
+        for content in [&dicts, &subtitles] {
+            print_results(filter(&content, &input));
         }
     }
 }
 
-fn filter(content: &[String], input: &str) -> Vec<String> {
+fn print_results(results: Vec<String>) {
+    let mut child = Command::new("less")
+        .arg("-R")
+        .arg("-M")
+        .arg("+Gg")
+        .arg("-s")
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    if child
+        .stdin
+        .as_mut()
+        .ok_or("Child process stdin has not been captured!")
+        .unwrap()
+        .write_all(results.join("\n").as_bytes())
+        .is_err()
+    {}
+    if let Err(why) = child.wait() {
+        panic!("{}", why)
+    }
+}
+
+fn filter(content: &[&str], input: &str) -> Vec<String> {
     let high_light_left = format!(
         "\x1b[0m\x1b[1;32m{}\x1b[0m\x1b[1;36m",
         input.replace("\t", "")
@@ -172,8 +172,9 @@ fn filter(content: &[String], input: &str) -> Vec<String> {
 
     let hits = content
         .par_iter()
+        .map(|v| *v)
         .filter(|l| l.contains(input))
-        .collect::<Vec<&String>>();
+        .collect::<Vec<&str>>();
 
     reorder(&hits, input.to_string())
         .iter()
