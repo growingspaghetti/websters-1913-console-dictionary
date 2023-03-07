@@ -12,6 +12,8 @@ use std::process::{Command, Stdio};
 
 const EIJIRO: &str = "EIJIRO-1448.TXT";
 const EIJIROGZIP: &str = "EIJIRO-1448.tsv.gz";
+const REIJIRO: &str = "REIJI-1441.TXT";
+const REIJIROGZIP: &str = "REIJI-1441.tsv.gz";
 const EDICT: &'static str = include_str!("../eiji-dict/edict.tab");
 
 struct TextAppender {
@@ -87,7 +89,56 @@ fn setup_eijiro() {
     println!("conversion finished successfully.");
 }
 
-fn edict_eijiro<'a>(edict_text: &'a mut String) -> Vec<&'a str> {
+fn setup_reijiro() {
+    println!("converting the format of {}", REIJIRO);
+    let sjis = fs::read(REIJIRO).unwrap();
+    let (utf8, _, _) = encoding_rs::SHIFT_JIS.decode(&sjis);
+    let mut text = String::with_capacity(utf8.len());
+    for line in utf8.lines() {
+        let separator = line.find(" : ").unwrap();
+        let (title, content) = (&line[3..separator], &line[separator + 3..]);
+        text.push_str("\n");
+        text.push_str(&title);
+        text.push_str("\t");
+        for (i, segment) in &mut content.replace("／", "").split("◆").enumerate() {
+            if i == 0 {
+                text.push_str(segment);
+                continue;
+            }
+            if segment.starts_with("ことわざ") || segment.starts_with("金言") {
+                text.push_str("◆");
+                text.push_str(segment);
+                continue;
+            }
+        }
+    }
+    let gzip = std::fs::File::create(REIJIROGZIP)
+        .expect(format!("ERROR unable to create {}", REIJIROGZIP).as_str());
+    let mut w = GzEncoder::new(gzip, Compression::default());
+    w.write_all(text[1..].as_bytes())
+        .expect(format!("ERROR failed to write data into {}", REIJIROGZIP).as_str());
+    w.flush().unwrap();
+    println!("conversion finished successfully.");
+}
+
+fn load_reijiro<'a>(text: &'a mut String) -> Vec<&'a str> {
+    let gzip_path = Path::new(REIJIROGZIP);
+    let source_path = Path::new(REIJIRO);
+    println!("{} exists:{}", REIJIROGZIP, gzip_path.exists());
+    println!("{} exists:{}", REIJIRO, source_path.exists());
+    if source_path.exists() && !gzip_path.exists() {
+        setup_reijiro();
+    }
+    if !gzip_path.exists() {
+        return vec![];
+    }
+    let r = std::fs::File::open(gzip_path).unwrap();
+    let mut decoder = GzDecoder::new(r);
+    decoder.read_to_string(text).unwrap();
+    text.lines().collect()
+}
+
+fn load_edict_eijiro<'a>(edict_text: &'a mut String) -> Vec<&'a str> {
     let gzip_path = Path::new(EIJIROGZIP);
     let source_path = Path::new(EIJIRO);
     println!("{} exists:{}", EIJIROGZIP, gzip_path.exists());
@@ -122,20 +173,26 @@ fn main() {
     let subtitles = include_str!("../eiji-dict/train")
         .lines()
         .collect::<Vec<&str>>();
-
     let mut edict_text = EDICT.to_string();
-    let dicts = edict_eijiro(&mut edict_text);
+    let dicts = load_edict_eijiro(&mut edict_text);
+    let mut reiji = String::new();
+    let reijiro = load_reijiro(&mut reiji);
 
     println!("\x1b[0m\x1b[1;32m検索文字\x1b[0m(Enter)で検索");
     println!("\x1b[1;33md\x1b[0mで画面をスクロール \x1b[1;33mq\x1b[0mで次の辞書");
     println!("\x1b[1;36mctrl+c\x1b[0mでソフトウェアを終了");
 
+    let contents = if reijiro.len() == 0 {
+        vec![&dicts, &subtitles]
+    } else {
+        vec![&dicts, &subtitles, &reijiro]
+    };
     loop {
         let input: String = get_input("");
         if input.trim().is_empty() {
             continue;
         }
-        for content in [&dicts, &subtitles] {
+        for content in &contents {
             print_results(filter(&content, &input));
         }
     }
