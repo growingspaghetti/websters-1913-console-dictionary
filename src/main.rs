@@ -142,6 +142,15 @@ fn add_segments(words: &mut Vec<u128>, line: &String, n: usize) {
         u <<= 8;
         u |= bs.get(p + 7).map(|&v| v).unwrap_or(0) as u128;
 
+        u <<= 8;
+        u |= bs.get(p + 8).map(|&v| v).unwrap_or(0) as u128;
+        u <<= 8;
+        u |= bs.get(p + 9).map(|&v| v).unwrap_or(0) as u128;
+        u <<= 8;
+        u |= bs.get(p + 10).map(|&v| v).unwrap_or(0) as u128;
+        u <<= 8;
+        u |= bs.get(p + 11).map(|&v| v).unwrap_or(0) as u128;
+
         u <<= 32;
         u |= n as u128;
         words.push(u);
@@ -153,6 +162,11 @@ pub fn vec_u128_to_u8(data: &Vec<u128>) -> (Vec<u8>, Vec<u8>) {
     let mut gram = Vec::<u8>::with_capacity(capacity);
     let mut lnum = Vec::<u8>::with_capacity(capacity);
     for &value in data {
+        gram.push((value >> 120) as u8);
+        gram.push((value >> 112) as u8);
+        gram.push((value >> 104) as u8);
+        gram.push((value >> 96) as u8);
+
         gram.push((value >> 88) as u8);
         gram.push((value >> 80) as u8);
         gram.push((value >> 72) as u8);
@@ -221,9 +235,11 @@ async fn setup_reijiro() -> Result<(), sqlx::Error> {
 
 async fn check_reijiro() {
     let source_path = Path::new(REIJIRO);
+    let ngram_path = Path::new(REIJIRO_NGRAM);
     let index_path = Path::new(REIJIRO_INDEX);
     let db_path = Path::new(REIJIRO_DB);
     println!("{} exists:{}", REIJIRO, source_path.exists());
+    println!("{} exists:{}", REIJIRO_NGRAM, ngram_path.exists());
     println!("{} exists:{}", REIJIRO_INDEX, index_path.exists());
     println!("{} exists:{}", REIJIRO_DB, db_path.exists());
     if source_path.exists() && !index_path.exists() {
@@ -233,9 +249,11 @@ async fn check_reijiro() {
 
 async fn check_eijiro() {
     let source_path = Path::new(EIJIRO);
+    let ngram_path = Path::new(EIJIRO_NGRAM);
     let index_path = Path::new(EIJIRO_INDEX);
     let db_path = Path::new(EIJIRO_DB);
     println!("{} exists:{}", EIJIRO, source_path.exists());
+    println!("{} exists:{}", EIJIRO_NGRAM, ngram_path.exists());
     println!("{} exists:{}", EIJIRO_INDEX, index_path.exists());
     println!("{} exists:{}", EIJIRO_DB, db_path.exists());
     if source_path.exists() && !index_path.exists() {
@@ -436,8 +454,8 @@ fn ngram_search(keyword: &String, ngram: &str, index: &str) -> Vec<u32> {
     nums
 }
 
-/// 8 byte length segmentation
-const BLOCK_SIZE: u64 = 8;
+/// 12 byte length segmentation
+const BLOCK_SIZE: u64 = 12;
 
 fn limit_right(index: &mut File, head: &[u8; BLOCK_SIZE as usize]) -> u64 {
     let (mut word, mut next) = ([0u8; BLOCK_SIZE as usize], [0u8; BLOCK_SIZE as usize]);
