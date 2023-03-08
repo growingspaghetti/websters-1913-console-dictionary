@@ -14,6 +14,10 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+const EDICT_NGRAM: &str = "EDICT_NGRAM";
+const EDICT_INDEX: &str = "EDICT_INDEX";
+const EDICT_DB: &str = "edict.db";
+
 const SUBTITLE_NGRAM: &str = "SUBTITLE_NGRAM";
 const SUBTITLE_INDEX: &str = "SUBTITLE_INDEX";
 const SUBTITLE_DB: &str = "subtitles.db";
@@ -27,8 +31,6 @@ const REIJIRO: &str = "REIJI-1441.TXT";
 const REIJIRO_DB: &str = "reiji.db";
 const REIJIRO_NGRAM: &str = "REIJI-1441_NGRAM";
 const REIJIRO_INDEX: &str = "REIJI-1441_INDEX";
-
-//const EDICT: &'static str = include_str!("../eiji-dict/edict.tab");
 
 struct TextAppender {
     text: String,
@@ -271,11 +273,7 @@ async fn main() -> Result<(), sqlx::Error> {
             continue;
         }
 
-        if Path::new(EIJIRO_DB).exists() {
-            let nums = ngram_search(&input, EIJIRO_NGRAM, EIJIRO_INDEX);
-            let hits = filter(&input, &nums, EIJIRO_DB).await.unwrap();
-            print_results(decorate(&input, hits));
-        }
+        edict_eiji(&input).await;
         {
             let nums = ngram_search(&input, SUBTITLE_NGRAM, SUBTITLE_INDEX);
             let hits = filter(&input, &nums, SUBTITLE_DB).await.unwrap();
@@ -287,6 +285,17 @@ async fn main() -> Result<(), sqlx::Error> {
             print_results(decorate(&input, hits));
         }
     }
+}
+
+async fn edict_eiji(input: &String) {
+    let nums = ngram_search(&input, EDICT_NGRAM, EDICT_INDEX);
+    let mut hits = filter(&input, &nums, EDICT_DB).await.unwrap();
+    if Path::new(EIJIRO_DB).exists() {
+        let nums = ngram_search(&input, EIJIRO_NGRAM, EIJIRO_INDEX);
+        let mut eiji_hits = filter(&input, &nums, EIJIRO_DB).await.unwrap();
+        hits.append(&mut eiji_hits)
+    }
+    print_results(decorate(&input, hits));
 }
 
 fn decorate(input: &String, hits: Vec<String>) -> Vec<String> {
