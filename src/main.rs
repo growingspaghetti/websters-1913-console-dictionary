@@ -3,6 +3,7 @@ use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use rayon::prelude::*;
+use sqlx::sqlite::SqlitePool;
 use std::fs;
 use std::fs::File;
 use std::io;
@@ -12,10 +13,14 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+const SUBTITLE_NGRAM: &str = "SUBTITLE_NGRAM";
+const SUBTITLE_INDEX: &str = "SUBTITLE_INDEX";
+const SUBTITLE_DB: &str = "subtitles.db";
 const EIJIRO: &str = "EIJIRO-1448.TXT";
 const EIJIROGZIP: &str = "EIJIRO-1448.tsv.gz";
 const EIJIRO_NGRAM: &str = "EIJIRO-1448_NGRAM";
 const EIJIRO_INDEX: &str = "EIJIRO-1448_INDEX";
+const EIJIRO_DB: &str = "eijiro.db";
 const REIJIRO: &str = "REIJI-1441.TXT";
 const REIJIROGZIP: &str = "REIJI-1441.tsv.gz";
 const EDICT: &'static str = include_str!("../eiji-dict/edict.tab");
@@ -173,31 +178,30 @@ fn reorder<'a>(hits: &Vec<&'a str>, input: String) -> Vec<&'a str> {
     a
 }
 
-fn main() {
-    let subtitles = &"a" //include_str!("../eiji-dict/train")
-        .lines()
-        .collect::<Vec<&str>>();
-    let mut edict_text = String::new(); //EDICT.to_string();
-    let dicts = load_edict_eijiro(&mut edict_text);
-    let mut reiji = String::new();
-    let reijiro = load_reijiro(&mut reiji);
+#[tokio::main]
+async fn main() -> Result<(), sqlx::Error> {
+    // let mut edict_text = String::new(); //EDICT.to_string();
+    // let dicts = load_edict_eijiro(&mut edict_text);
+    // let mut reiji = String::new();
+    // let reijiro = load_reijiro(&mut reiji);
 
     println!("\x1b[0m\x1b[1;32m検索文字\x1b[0m(Enter)で検索");
     println!("\x1b[1;33md\x1b[0mで画面をスクロール \x1b[1;33mq\x1b[0mで次の辞書");
     println!("\x1b[1;36mctrl+c\x1b[0mでソフトウェアを終了");
 
-    let contents = if reijiro.len() == 0 {
-        vec![&dicts, &subtitles]
-    } else {
-        vec![&dicts, &subtitles, &reijiro]
-    };
     loop {
         let input: String = get_input("");
         if input.trim().is_empty() {
             continue;
         }
-        for content in &[&dicts] {
-            print_results(filter(&content, &input));
+
+        // {
+        //     let nums = ngram_search(&input, EIJIRO_NGRAM, EIJIRO_INDEX);
+        //     print_results(filter(&input, &nums));
+        // }
+        {
+            let nums = ngram_search(&input, SUBTITLE_NGRAM, SUBTITLE_INDEX);
+            print_results(filter(&input, &nums, SUBTITLE_DB).await.unwrap());
         }
     }
 }
@@ -224,22 +228,37 @@ fn print_results(results: Vec<String>) {
     }
 }
 
-fn filter(content: &[&str], input: &str) -> Vec<String> {
+async fn filter(input: &str, nums: &Vec<u32>, db: &str) -> Result<Vec<String>, sqlx::Error> {
     let high_light_left = format!(
         "\x1b[0m\x1b[1;32m{}\x1b[0m\x1b[1;36m",
         input.replace("\t", "")
     );
     let high_light_right = format!("\x1b[1;32m{}\x1b[0m", input);
 
-    let nums = get_range(&input.to_string());
+    #[derive(sqlx::FromRow)]
+    struct Line {
+        line: String,
+    }
+    let params = format!("?{}", ", ?".repeat(nums.len() - 1));
+    let query_str = format!("SELECT line FROM lines WHERE id IN ( { } )", params);
+    let mut query = sqlx::query_as::<_, Line>(&query_str);
+    for i in nums {
+        query = query.bind(i);
+    }
+    let pool = SqlitePool::connect(format!("sqlite:{}?mode=rwc", db).as_str()).await?;
+    //let conn = pool.acquire().await?;
+    let rows = query.fetch_all(&pool).await?;
+    // for r in rows {
+    //     println!("{:?}", r.line);
+    // }
 
-    let hits = nums
+    let hits = &rows
         .par_iter()
-        .map(|&i| content[i as usize])
+        .map(|r| r.line.as_str())
         .filter(|l| l.contains(input))
         .collect::<Vec<&str>>();
 
-    reorder(&hits, input.to_string())
+    let results = reorder(&hits, input.to_string())
         .iter()
         .map(|l| {
             let tabi = l.find('\t').unwrap();
@@ -255,7 +274,8 @@ fn filter(content: &[&str], input: &str) -> Vec<String> {
                     .replace(&input, &high_light_right)
             )
         })
-        .collect::<Vec<String>>()
+        .collect::<Vec<String>>();
+    Ok(results)
 }
 
 fn get_input(prompt: &str) -> String {
@@ -274,7 +294,7 @@ fn get_input(prompt: &str) -> String {
         .replace("📙", "\t")
 }
 
-fn get_range(keyword: &String) -> Vec<u32> {
+fn ngram_search(keyword: &String, ngram: &str, index: &str) -> Vec<u32> {
     fn to_u32(b: &[u8; 4]) -> u32 {
         let mut n = 0u32;
         n |= b[0] as u32;
@@ -297,15 +317,15 @@ fn get_range(keyword: &String) -> Vec<u32> {
         }
         search_block[i] = v;
     }
-    let mut index = File::open(EIJIRO_NGRAM).unwrap();
-    let begin = limit_left(&mut index, &search_block) / BLOCK_SIZE * 4;
-    let end = limit_right(&mut index, &search_block) / BLOCK_SIZE * 4;
-    let mut numinfo = File::open(EIJIRO_INDEX).unwrap();
+    let mut ngramf = File::open(ngram).unwrap();
+    let begin = limit_left(&mut ngramf, &search_block) / BLOCK_SIZE * 4;
+    let end = limit_right(&mut ngramf, &search_block) / BLOCK_SIZE * 4;
+    let mut indexf = File::open(index).unwrap();
     let mut nums = vec![];
     for p in (begin..end).step_by(4) {
         let mut num = [0u8; 4];
-        numinfo.seek(SeekFrom::Start(p)).unwrap();
-        numinfo.read_exact(&mut num).unwrap();
+        indexf.seek(SeekFrom::Start(p)).unwrap();
+        indexf.read_exact(&mut num).unwrap();
         nums.push(to_u32(&num));
     }
     nums.sort();
