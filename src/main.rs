@@ -4,14 +4,18 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use rayon::prelude::*;
 use std::fs;
+use std::fs::File;
 use std::io;
 use std::io::prelude::*;
+use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
 const EIJIRO: &str = "EIJIRO-1448.TXT";
 const EIJIROGZIP: &str = "EIJIRO-1448.tsv.gz";
+const EIJIRO_NGRAM: &str = "EIJIRO-1448_NGRAM";
+const EIJIRO_INDEX: &str = "EIJIRO-1448_INDEX";
 const REIJIRO: &str = "REIJI-1441.TXT";
 const REIJIROGZIP: &str = "REIJI-1441.tsv.gz";
 const EDICT: &'static str = include_str!("../eiji-dict/edict.tab");
@@ -170,10 +174,10 @@ fn reorder<'a>(hits: &Vec<&'a str>, input: String) -> Vec<&'a str> {
 }
 
 fn main() {
-    let subtitles = include_str!("../eiji-dict/train")
+    let subtitles = &"a" //include_str!("../eiji-dict/train")
         .lines()
         .collect::<Vec<&str>>();
-    let mut edict_text = EDICT.to_string();
+    let mut edict_text = String::new(); //EDICT.to_string();
     let dicts = load_edict_eijiro(&mut edict_text);
     let mut reiji = String::new();
     let reijiro = load_reijiro(&mut reiji);
@@ -192,7 +196,7 @@ fn main() {
         if input.trim().is_empty() {
             continue;
         }
-        for content in &contents {
+        for content in &[&dicts] {
             print_results(filter(&content, &input));
         }
     }
@@ -227,9 +231,11 @@ fn filter(content: &[&str], input: &str) -> Vec<String> {
     );
     let high_light_right = format!("\x1b[1;32m{}\x1b[0m", input);
 
-    let hits = content
+    let nums = get_range(&input.to_string());
+
+    let hits = nums
         .par_iter()
-        .map(|v| *v)
+        .map(|&i| content[i as usize])
         .filter(|l| l.contains(input))
         .collect::<Vec<&str>>();
 
@@ -266,4 +272,116 @@ fn get_input(prompt: &str) -> String {
         .trim()
         .replace("🍵", " ")
         .replace("📙", "\t")
+}
+
+fn get_range(keyword: &String) -> Vec<u32> {
+    fn to_u32(b: &[u8; 4]) -> u32 {
+        let mut n = 0u32;
+        n |= b[0] as u32;
+        n <<= 8;
+        n |= b[1] as u32;
+        n <<= 8;
+        n |= b[2] as u32;
+        n <<= 8;
+        n |= b[3] as u32;
+        n
+    }
+    if keyword.is_empty() {
+        return vec![];
+    }
+    let c = keyword.as_bytes();
+    let mut search_block = [0u8; BLOCK_SIZE as usize];
+    for (i, &v) in c.iter().enumerate() {
+        if i > search_block.len() - 1 {
+            break;
+        }
+        search_block[i] = v;
+    }
+    let mut index = File::open(EIJIRO_NGRAM).unwrap();
+    let begin = limit_left(&mut index, &search_block) / BLOCK_SIZE * 4;
+    let end = limit_right(&mut index, &search_block) / BLOCK_SIZE * 4;
+    let mut numinfo = File::open(EIJIRO_INDEX).unwrap();
+    let mut nums = vec![];
+    for p in (begin..end).step_by(4) {
+        let mut num = [0u8; 4];
+        numinfo.seek(SeekFrom::Start(p)).unwrap();
+        numinfo.read_exact(&mut num).unwrap();
+        nums.push(to_u32(&num));
+    }
+    nums.sort();
+    nums.dedup();
+    nums
+}
+
+/// 8 byte length segmentation
+const BLOCK_SIZE: u64 = 8;
+
+fn limit_right(index: &mut File, head: &[u8; BLOCK_SIZE as usize]) -> u64 {
+    let (mut word, mut next) = ([0u8; BLOCK_SIZE as usize], [0u8; BLOCK_SIZE as usize]);
+    let blocks = index.metadata().unwrap().len() / BLOCK_SIZE;
+    let (mut fr, mut to) = (0u64, blocks * BLOCK_SIZE);
+    let mut cursor = (blocks / 2 - 1) * BLOCK_SIZE;
+    loop {
+        index.seek(SeekFrom::Start(cursor)).unwrap();
+        index.read_exact(&mut word).unwrap();
+        index.seek(SeekFrom::Start(cursor + BLOCK_SIZE)).unwrap();
+        index.read_exact(&mut next).unwrap();
+
+        for (i, &c) in head.iter().enumerate().rev() {
+            if c != 0 {
+                break;
+            }
+            (word[i], next[i]) = (0, 0);
+        }
+
+        println!("{:?}", String::from_utf8(word.iter().map(|&v| v).collect()));
+        if word <= *head && *head < next {
+            return cursor + BLOCK_SIZE;
+        }
+        if cursor == 0 || cursor == (blocks - 1) * BLOCK_SIZE {
+            return cursor + BLOCK_SIZE;
+        }
+        if *head < word {
+            to = cursor;
+            cursor -= (cursor - fr) / BLOCK_SIZE / 2 * BLOCK_SIZE;
+        } else if word <= *head {
+            fr = cursor;
+            cursor += (to - cursor) / BLOCK_SIZE / 2 * BLOCK_SIZE;
+        }
+    }
+}
+
+fn limit_left(index: &mut File, head: &[u8; BLOCK_SIZE as usize]) -> u64 {
+    let (mut word, mut next) = ([0u8; BLOCK_SIZE as usize], [0u8; BLOCK_SIZE as usize]);
+    let blocks = index.metadata().unwrap().len() / BLOCK_SIZE;
+    let (mut fr, mut to) = (0u64, blocks * BLOCK_SIZE);
+    let mut cursor = (blocks / 2 - 1) * BLOCK_SIZE;
+    loop {
+        index.seek(SeekFrom::Start(cursor)).unwrap();
+        index.read_exact(&mut word).unwrap();
+        index.seek(SeekFrom::Start(cursor + BLOCK_SIZE)).unwrap();
+        index.read_exact(&mut next).unwrap();
+
+        for (i, &c) in head.iter().enumerate().rev() {
+            if c != 0 {
+                break;
+            }
+            (word[i], next[i]) = (0, 0);
+        }
+
+        println!("{:?}", String::from_utf8(word.iter().map(|&v| v).collect()));
+        if word < *head && *head <= next {
+            return cursor + BLOCK_SIZE;
+        }
+        if cursor == 0 || cursor == (blocks - 1) * BLOCK_SIZE {
+            return cursor + BLOCK_SIZE;
+        }
+        if *head <= word {
+            to = cursor;
+            cursor -= (cursor - fr) / BLOCK_SIZE / 2 * BLOCK_SIZE;
+        } else if word < *head {
+            fr = cursor;
+            cursor += (to - cursor) / BLOCK_SIZE / 2 * BLOCK_SIZE;
+        }
+    }
 }
