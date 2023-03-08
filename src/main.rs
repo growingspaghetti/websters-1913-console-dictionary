@@ -1,9 +1,10 @@
+#[macro_use]
+extern crate log;
+
 use encoding_rs;
-use flate2::read::GzDecoder;
-use flate2::write::GzEncoder;
-use flate2::Compression;
 use rayon::prelude::*;
 use sqlx::sqlite::SqlitePool;
+use sqlx::Executor;
 use std::fs;
 use std::fs::File;
 use std::io;
@@ -16,14 +17,18 @@ use std::process::{Command, Stdio};
 const SUBTITLE_NGRAM: &str = "SUBTITLE_NGRAM";
 const SUBTITLE_INDEX: &str = "SUBTITLE_INDEX";
 const SUBTITLE_DB: &str = "subtitles.db";
+
 const EIJIRO: &str = "EIJIRO-1448.TXT";
-const EIJIROGZIP: &str = "EIJIRO-1448.tsv.gz";
+const EIJIRO_DB: &str = "eijiro.db";
 const EIJIRO_NGRAM: &str = "EIJIRO-1448_NGRAM";
 const EIJIRO_INDEX: &str = "EIJIRO-1448_INDEX";
-const EIJIRO_DB: &str = "eijiro.db";
+
 const REIJIRO: &str = "REIJI-1441.TXT";
-const REIJIROGZIP: &str = "REIJI-1441.tsv.gz";
-const EDICT: &'static str = include_str!("../eiji-dict/edict.tab");
+const REIJIRO_DB: &str = "reiji.db";
+const REIJIRO_NGRAM: &str = "REIJI-1441_NGRAM";
+const REIJIRO_INDEX: &str = "REIJI-1441_INDEX";
+
+//const EDICT: &'static str = include_str!("../eiji-dict/edict.tab");
 
 struct TextAppender {
     text: String,
@@ -80,8 +85,8 @@ impl TextAppender {
     }
 }
 
-fn setup_eijiro() {
-    println!("converting the format of {}", EIJIRO);
+async fn setup_eijiro() -> Result<(), sqlx::Error> {
+    println!("building the index of {}", EIJIRO);
     let sjis = fs::read(EIJIRO).unwrap();
     let (utf8, _, _) = encoding_rs::SHIFT_JIS.decode(&sjis);
     let mut buf = TextAppender::new(utf8.len());
@@ -89,17 +94,83 @@ fn setup_eijiro() {
         let separator = line.find(" : ").unwrap();
         buf.append(&line[3..separator], &line[separator + 3..]);
     }
-    let gzip = std::fs::File::create(EIJIROGZIP)
-        .expect(format!("ERROR unable to create {}", EIJIROGZIP).as_str());
-    let mut w = GzEncoder::new(gzip, Compression::default());
-    w.write_all(buf.text_as_bytes())
-        .expect(format!("ERROR failed to write data into {}", EIJIROGZIP).as_str());
-    w.flush().unwrap();
-    println!("conversion finished successfully.");
+
+    let mut words: Vec<u128> = vec![];
+    let pool = SqlitePool::connect(format!("sqlite:{}?mode=rwc", EIJIRO_DB).as_str()).await?;
+    let mut conn = pool.acquire().await?;
+    sqlx::query("CREATE TABLE lines(id INTEGER PRIMARY KEY AUTOINCREMENT, line TEXT);")
+        .execute(&mut conn)
+        .await?;
+    let mut tx = pool.begin().await?;
+    for (i, line) in buf.text_as_bytes().lines().map(|l| l.unwrap()).enumerate() {
+        let query_str = format!("INSERT INTO lines(id, line) VALUES ({},?);", i);
+        let mut query = sqlx::query(&query_str);
+        query = query.bind(&line);
+        tx.execute(query).await?;
+        add_segments(&mut words, &line, i);
+    }
+    tx.commit().await?;
+    words.sort();
+    words.dedup();
+    let (gram, idx) = vec_u128_to_u8(&words);
+    fs::write(EIJIRO_NGRAM, &gram).unwrap();
+    fs::write(EIJIRO_INDEX, &idx).unwrap();
+    println!("indexing finished successfully.");
+    Ok(())
 }
 
-fn setup_reijiro() {
-    println!("converting the format of {}", REIJIRO);
+fn add_segments(words: &mut Vec<u128>, line: &String, n: usize) {
+    let bs = line.as_bytes();
+    for p in 0..bs.len() {
+        let mut u = 0u128;
+        u |= bs.get(p + 0).map(|&v| v).unwrap_or(0) as u128;
+        u <<= 8;
+        u |= bs.get(p + 1).map(|&v| v).unwrap_or(0) as u128;
+        u <<= 8;
+        u |= bs.get(p + 2).map(|&v| v).unwrap_or(0) as u128;
+        u <<= 8;
+        u |= bs.get(p + 3).map(|&v| v).unwrap_or(0) as u128;
+
+        u <<= 8;
+        u |= bs.get(p + 4).map(|&v| v).unwrap_or(0) as u128;
+        u <<= 8;
+        u |= bs.get(p + 5).map(|&v| v).unwrap_or(0) as u128;
+        u <<= 8;
+        u |= bs.get(p + 6).map(|&v| v).unwrap_or(0) as u128;
+        u <<= 8;
+        u |= bs.get(p + 7).map(|&v| v).unwrap_or(0) as u128;
+
+        u <<= 32;
+        u |= n as u128;
+        words.push(u);
+    }
+}
+
+pub fn vec_u128_to_u8(data: &Vec<u128>) -> (Vec<u8>, Vec<u8>) {
+    let capacity = 32 / 8 * data.len() as usize;
+    let mut gram = Vec::<u8>::with_capacity(capacity);
+    let mut lnum = Vec::<u8>::with_capacity(capacity);
+    for &value in data {
+        gram.push((value >> 88) as u8);
+        gram.push((value >> 80) as u8);
+        gram.push((value >> 72) as u8);
+        gram.push((value >> 64) as u8);
+
+        gram.push((value >> 56) as u8);
+        gram.push((value >> 48) as u8);
+        gram.push((value >> 40) as u8);
+        gram.push((value >> 32) as u8);
+
+        lnum.push((value >> 24) as u8);
+        lnum.push((value >> 16) as u8);
+        lnum.push((value >> 8) as u8);
+        lnum.push((value >> 0) as u8);
+    }
+    (gram, lnum)
+}
+
+async fn setup_reijiro() -> Result<(), sqlx::Error> {
+    println!("building the index of {}", REIJIRO);
     let sjis = fs::read(REIJIRO).unwrap();
     let (utf8, _, _) = encoding_rs::SHIFT_JIS.decode(&sjis);
     let mut text = String::with_capacity(utf8.len());
@@ -121,50 +192,56 @@ fn setup_reijiro() {
             }
         }
     }
-    let gzip = std::fs::File::create(REIJIROGZIP)
-        .expect(format!("ERROR unable to create {}", REIJIROGZIP).as_str());
-    let mut w = GzEncoder::new(gzip, Compression::default());
-    w.write_all(text[1..].as_bytes())
-        .expect(format!("ERROR failed to write data into {}", REIJIROGZIP).as_str());
-    w.flush().unwrap();
-    println!("conversion finished successfully.");
+
+    let mut words: Vec<u128> = vec![];
+    let pool = SqlitePool::connect(format!("sqlite:{}?mode=rwc", REIJIRO_DB).as_str()).await?;
+    let mut conn = pool.acquire().await?;
+    sqlx::query("CREATE TABLE lines(id INTEGER PRIMARY KEY AUTOINCREMENT, line TEXT);")
+        .execute(&mut conn)
+        .await?;
+    let mut tx = pool.begin().await?;
+    for (i, line) in text[1..].lines().map(|v| v.to_string()).enumerate() {
+        let query_str = format!("INSERT INTO lines(id, line) VALUES ({},?);", i);
+        let mut query = sqlx::query(&query_str);
+        query = query.bind(&line);
+        tx.execute(query).await?;
+        add_segments(&mut words, &line, i);
+    }
+    tx.commit().await?;
+    words.sort();
+    words.dedup();
+    let (gram, idx) = vec_u128_to_u8(&words);
+    fs::write(REIJIRO_NGRAM, &gram).unwrap();
+    fs::write(REIJIRO_INDEX, &idx).unwrap();
+    println!("indexing finished successfully.");
+    Ok(())
 }
 
-fn load_reijiro<'a>(text: &'a mut String) -> Vec<&'a str> {
-    let gzip_path = Path::new(REIJIROGZIP);
+async fn check_reijiro() {
     let source_path = Path::new(REIJIRO);
-    println!("{} exists:{}", REIJIROGZIP, gzip_path.exists());
+    let index_path = Path::new(REIJIRO_INDEX);
+    let db_path = Path::new(REIJIRO_DB);
     println!("{} exists:{}", REIJIRO, source_path.exists());
-    if source_path.exists() && !gzip_path.exists() {
-        setup_reijiro();
+    println!("{} exists:{}", REIJIRO_INDEX, index_path.exists());
+    println!("{} exists:{}", REIJIRO_DB, db_path.exists());
+    if source_path.exists() && !index_path.exists() {
+        setup_reijiro().await.unwrap();
     }
-    if !gzip_path.exists() {
-        return vec![];
-    }
-    let r = std::fs::File::open(gzip_path).unwrap();
-    let mut decoder = GzDecoder::new(r);
-    decoder.read_to_string(text).unwrap();
-    text.lines().collect()
 }
 
-fn load_edict_eijiro<'a>(edict_text: &'a mut String) -> Vec<&'a str> {
-    let gzip_path = Path::new(EIJIROGZIP);
+async fn check_eijiro() {
     let source_path = Path::new(EIJIRO);
-    println!("{} exists:{}", EIJIROGZIP, gzip_path.exists());
+    let index_path = Path::new(EIJIRO_INDEX);
+    let db_path = Path::new(EIJIRO_DB);
     println!("{} exists:{}", EIJIRO, source_path.exists());
-    if source_path.exists() && !gzip_path.exists() {
-        setup_eijiro();
+    println!("{} exists:{}", EIJIRO_INDEX, index_path.exists());
+    println!("{} exists:{}", EIJIRO_DB, db_path.exists());
+    if source_path.exists() && !index_path.exists() {
+        setup_eijiro().await.unwrap();
     }
-    if !gzip_path.exists() {
-        return edict_text.lines().collect();
-    }
-    let r = std::fs::File::open(gzip_path).unwrap();
-    let mut decoder = GzDecoder::new(r);
-    decoder.read_to_string(edict_text).unwrap();
-    edict_text.lines().collect()
 }
 
-fn reorder<'a>(hits: &Vec<&'a str>, input: String) -> Vec<&'a str> {
+fn reorder<'a>(hits: &Vec<&'a str>, input: &String) -> Vec<&'a str> {
     let mut a = vec![];
     let mut b = vec![];
     for i in 0..hits.len() {
@@ -180,10 +257,9 @@ fn reorder<'a>(hits: &Vec<&'a str>, input: String) -> Vec<&'a str> {
 
 #[tokio::main]
 async fn main() -> Result<(), sqlx::Error> {
-    // let mut edict_text = String::new(); //EDICT.to_string();
-    // let dicts = load_edict_eijiro(&mut edict_text);
-    // let mut reiji = String::new();
-    // let reijiro = load_reijiro(&mut reiji);
+    env_logger::init();
+    check_eijiro().await;
+    check_reijiro().await;
 
     println!("\x1b[0m\x1b[1;32m検索文字\x1b[0m(Enter)で検索");
     println!("\x1b[1;33md\x1b[0mで画面をスクロール \x1b[1;33mq\x1b[0mで次の辞書");
@@ -195,15 +271,47 @@ async fn main() -> Result<(), sqlx::Error> {
             continue;
         }
 
-        // {
-        //     let nums = ngram_search(&input, EIJIRO_NGRAM, EIJIRO_INDEX);
-        //     print_results(filter(&input, &nums));
-        // }
+        if Path::new(EIJIRO_DB).exists() {
+            let nums = ngram_search(&input, EIJIRO_NGRAM, EIJIRO_INDEX);
+            let hits = filter(&input, &nums, EIJIRO_DB).await.unwrap();
+            print_results(decorate(&input, hits));
+        }
         {
             let nums = ngram_search(&input, SUBTITLE_NGRAM, SUBTITLE_INDEX);
-            print_results(filter(&input, &nums, SUBTITLE_DB).await.unwrap());
+            let hits = filter(&input, &nums, SUBTITLE_DB).await.unwrap();
+            print_results(decorate(&input, hits));
+        }
+        if Path::new(REIJIRO_DB).exists() {
+            let nums = ngram_search(&input, REIJIRO_NGRAM, REIJIRO_INDEX);
+            let hits = filter(&input, &nums, REIJIRO_DB).await.unwrap();
+            print_results(decorate(&input, hits));
         }
     }
+}
+
+fn decorate(input: &String, hits: Vec<String>) -> Vec<String> {
+    let high_light_left = format!(
+        "\x1b[0m\x1b[1;32m{}\x1b[0m\x1b[1;36m",
+        input.replace("\t", "")
+    );
+    let high_light_right = format!("\x1b[1;32m{}\x1b[0m", input);
+    reorder(&hits.iter().map(|s| s.as_str()).collect(), &input)
+        .iter()
+        .map(|l| {
+            let tabi = l.find('\t').unwrap();
+            let left = &l[0..tabi];
+            let right = &l[tabi + 1..];
+            format!(
+                "\x1b[1;36m{}\x1b[0m  {}",
+                left.replace(&input.replace("\t", ""), &high_light_left),
+                right
+                    .replace("\\n", "\n")
+                    .replace("<ħ>", "\x1b[9m")
+                    .replace("</ħ>", "\x1b[0m")
+                    .replace(input.as_str(), &high_light_right)
+            )
+        })
+        .collect::<Vec<String>>()
 }
 
 fn print_results(results: Vec<String>) {
@@ -229,11 +337,10 @@ fn print_results(results: Vec<String>) {
 }
 
 async fn filter(input: &str, nums: &Vec<u32>, db: &str) -> Result<Vec<String>, sqlx::Error> {
-    let high_light_left = format!(
-        "\x1b[0m\x1b[1;32m{}\x1b[0m\x1b[1;36m",
-        input.replace("\t", "")
-    );
-    let high_light_right = format!("\x1b[1;32m{}\x1b[0m", input);
+    debug!("{:?} given:{}", nums, nums.len());
+    if nums.len() == 0 {
+        return Ok(vec![]);
+    }
 
     #[derive(sqlx::FromRow)]
     struct Line {
@@ -246,11 +353,7 @@ async fn filter(input: &str, nums: &Vec<u32>, db: &str) -> Result<Vec<String>, s
         query = query.bind(i);
     }
     let pool = SqlitePool::connect(format!("sqlite:{}?mode=rwc", db).as_str()).await?;
-    //let conn = pool.acquire().await?;
     let rows = query.fetch_all(&pool).await?;
-    // for r in rows {
-    //     println!("{:?}", r.line);
-    // }
 
     let hits = &rows
         .par_iter()
@@ -258,23 +361,7 @@ async fn filter(input: &str, nums: &Vec<u32>, db: &str) -> Result<Vec<String>, s
         .filter(|l| l.contains(input))
         .collect::<Vec<&str>>();
 
-    let results = reorder(&hits, input.to_string())
-        .iter()
-        .map(|l| {
-            let tabi = l.find('\t').unwrap();
-            let left = &l[0..tabi];
-            let right = &l[tabi + 1..];
-            format!(
-                "\x1b[1;36m{}\x1b[0m  {}",
-                left.replace(&input.replace("\t", ""), &high_light_left),
-                right
-                    .replace("\\n", "\n")
-                    .replace("<ħ>", "\x1b[9m")
-                    .replace("</ħ>", "\x1b[0m")
-                    .replace(&input, &high_light_right)
-            )
-        })
-        .collect::<Vec<String>>();
+    let results = hits.iter().map(|s| s.to_string()).collect();
     Ok(results)
 }
 
@@ -330,6 +417,13 @@ fn ngram_search(keyword: &String, ngram: &str, index: &str) -> Vec<u32> {
     }
     nums.sort();
     nums.dedup();
+    if nums.len() > 9999 {
+        info!(
+            "because it found too much hits of {}, will truncate to 9999",
+            nums.len()
+        );
+        nums.truncate(9999);
+    }
     nums
 }
 
@@ -354,7 +448,7 @@ fn limit_right(index: &mut File, head: &[u8; BLOCK_SIZE as usize]) -> u64 {
             (word[i], next[i]) = (0, 0);
         }
 
-        println!("{:?}", String::from_utf8(word.iter().map(|&v| v).collect()));
+        debug!("{:?}", String::from_utf8(word.iter().map(|&v| v).collect()));
         if word <= *head && *head < next {
             return cursor + BLOCK_SIZE;
         }
@@ -389,7 +483,7 @@ fn limit_left(index: &mut File, head: &[u8; BLOCK_SIZE as usize]) -> u64 {
             (word[i], next[i]) = (0, 0);
         }
 
-        println!("{:?}", String::from_utf8(word.iter().map(|&v| v).collect()));
+        debug!("{:?}", String::from_utf8(word.iter().map(|&v| v).collect()));
         if word < *head && *head <= next {
             return cursor + BLOCK_SIZE;
         }
