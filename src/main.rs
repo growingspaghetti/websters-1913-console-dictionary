@@ -446,7 +446,7 @@ fn ngram_search(keyword: &String, ngram: &str, index: &str) -> Vec<u32> {
     nums.dedup();
     if nums.len() > 9999 {
         info!(
-            "because it found too much hits of {}, will truncate to 9999",
+            "because it found too many hits of {}, will truncate to 9999",
             nums.len()
         );
         nums.truncate(9999);
