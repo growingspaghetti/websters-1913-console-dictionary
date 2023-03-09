@@ -3,8 +3,6 @@ extern crate log;
 
 use encoding_rs;
 use rayon::prelude::*;
-use sqlx::sqlite::SqlitePool;
-use sqlx::Executor;
 use std::fs;
 use std::fs::File;
 use std::io;
@@ -16,19 +14,19 @@ use std::process::{Command, Stdio};
 
 const EDICT_NGRAM: &str = "EDICT_NGRAM";
 const EDICT_INDEX: &str = "EDICT_INDEX";
-const EDICT_DB: &str = "edict.db";
+const EDICT_TEXT: &str = "EDICT_TEXT";
 
 const SUBTITLE_NGRAM: &str = "SUBTITLE_NGRAM";
 const SUBTITLE_INDEX: &str = "SUBTITLE_INDEX";
-const SUBTITLE_DB: &str = "subtitles.db";
+const SUBTITLE_TEXT: &str = "SUBTITLE_TEXT";
 
 const EIJIRO: &str = "EIJIRO-1448.TXT";
-const EIJIRO_DB: &str = "eijiro.db";
+const EIJIRO_TEXT: &str = "EIJIRO-1448_TEXT";
 const EIJIRO_NGRAM: &str = "EIJIRO-1448_NGRAM";
 const EIJIRO_INDEX: &str = "EIJIRO-1448_INDEX";
 
 const REIJIRO: &str = "REIJI-1441.TXT";
-const REIJIRO_DB: &str = "reiji.db";
+const REIJIRO_TEXT: &str = "REIJI-1441_TEXT";
 const REIJIRO_NGRAM: &str = "REIJI-1441_NGRAM";
 const REIJIRO_INDEX: &str = "REIJI-1441_INDEX";
 
@@ -82,12 +80,53 @@ impl TextAppender {
             .push_str(&attr.replace("{", "【").replace("}", "】"));
         self.text.push_str(&content.replace("■", "\\n"));
     }
-    fn text_as_bytes(&self) -> &[u8] {
-        self.text[1..].as_bytes()
-    }
 }
 
-async fn setup_eijiro() -> Result<(), sqlx::Error> {
+const SUBTITLE: &str = "eiji-dict/train";
+fn setup_subtitle() {
+    println!("building the index of {}", SUBTITLE);
+    let utf8 = fs::read_to_string(SUBTITLE).unwrap();
+    let mut words: Vec<[u8; 20]> = vec![];
+    let mut acc = 0u32;
+    for line in utf8.lines().map(|v| v.to_string()) {
+        add_segments(&mut words, &line, acc);
+        acc += line.len() as u32;
+        acc += "\n".len() as u32;
+    }
+    words.sort();
+    words.dedup();
+    let (gram, idx) = vec_to_u8(&words);
+    fs::write(
+        SUBTITLE_TEXT,
+        &utf8.lines().collect::<Vec<&str>>().join("\n"),
+    )
+    .unwrap();
+    fs::write(SUBTITLE_NGRAM, &gram).unwrap();
+    fs::write(SUBTITLE_INDEX, &idx).unwrap();
+    println!("indexing finished successfully.");
+}
+
+const EDICT: &str = "eiji-dict/edict.tab";
+fn setup_edict() {
+    println!("building the index of {}", EDICT);
+    let utf8 = fs::read_to_string(EDICT).unwrap();
+    let mut words: Vec<[u8; 20]> = vec![];
+    let mut acc = 0u32;
+    for line in utf8.lines().map(|v| v.to_string()) {
+        add_segments(&mut words, &line, acc);
+        acc += line.len() as u32;
+        acc += "\n".len() as u32;
+    }
+    words.sort();
+    words.dedup();
+    let (gram, idx) = vec_to_u8(&words);
+    fs::write(EDICT_TEXT, &utf8.lines().collect::<Vec<&str>>().join("\n")).unwrap();
+    fs::write(EDICT_NGRAM, &gram).unwrap();
+    fs::write(EDICT_INDEX, &idx).unwrap();
+    println!("indexing finished successfully.");
+}
+
+fn setup_eijiro() {
     println!("building the index of {}", EIJIRO);
     let sjis = fs::read(EIJIRO).unwrap();
     let (utf8, _, _) = encoding_rs::SHIFT_JIS.decode(&sjis);
@@ -97,95 +136,58 @@ async fn setup_eijiro() -> Result<(), sqlx::Error> {
         buf.append(&line[3..separator], &line[separator + 3..]);
     }
 
-    let mut words: Vec<u128> = vec![];
-    let pool = SqlitePool::connect(format!("sqlite:{}?mode=rwc", EIJIRO_DB).as_str()).await?;
-    let mut conn = pool.acquire().await?;
-    sqlx::query("CREATE TABLE lines(id INTEGER PRIMARY KEY AUTOINCREMENT, line TEXT);")
-        .execute(&mut conn)
-        .await?;
-    let mut tx = pool.begin().await?;
-    for (i, line) in buf.text_as_bytes().lines().map(|l| l.unwrap()).enumerate() {
-        let query_str = format!("INSERT INTO lines(id, line) VALUES ({},?);", i);
-        let mut query = sqlx::query(&query_str);
-        query = query.bind(&line);
-        tx.execute(query).await?;
-        add_segments(&mut words, &line, i);
+    let mut words: Vec<[u8; 20]> = vec![];
+    let mut acc = 0u32;
+    for line in buf.text[1..].lines().map(|v| v.to_string()) {
+        add_segments(&mut words, &line, acc);
+        acc += line.len() as u32;
+        acc += "\n".len() as u32;
     }
-    tx.commit().await?;
     words.sort();
     words.dedup();
-    let (gram, idx) = vec_u128_to_u8(&words);
+    let (gram, idx) = vec_to_u8(&words);
+    fs::write(EIJIRO_TEXT, &buf.text[1..]).unwrap();
     fs::write(EIJIRO_NGRAM, &gram).unwrap();
     fs::write(EIJIRO_INDEX, &idx).unwrap();
     println!("indexing finished successfully.");
-    Ok(())
 }
 
-fn add_segments(words: &mut Vec<u128>, line: &String, n: usize) {
-    let bs = line.as_bytes();
-    for p in 0..bs.len() {
-        let mut u = 0u128;
-        u |= bs.get(p + 0).map(|&v| v).unwrap_or(0) as u128;
-        u <<= 8;
-        u |= bs.get(p + 1).map(|&v| v).unwrap_or(0) as u128;
-        u <<= 8;
-        u |= bs.get(p + 2).map(|&v| v).unwrap_or(0) as u128;
-        u <<= 8;
-        u |= bs.get(p + 3).map(|&v| v).unwrap_or(0) as u128;
-
-        u <<= 8;
-        u |= bs.get(p + 4).map(|&v| v).unwrap_or(0) as u128;
-        u <<= 8;
-        u |= bs.get(p + 5).map(|&v| v).unwrap_or(0) as u128;
-        u <<= 8;
-        u |= bs.get(p + 6).map(|&v| v).unwrap_or(0) as u128;
-        u <<= 8;
-        u |= bs.get(p + 7).map(|&v| v).unwrap_or(0) as u128;
-
-        u <<= 8;
-        u |= bs.get(p + 8).map(|&v| v).unwrap_or(0) as u128;
-        u <<= 8;
-        u |= bs.get(p + 9).map(|&v| v).unwrap_or(0) as u128;
-        u <<= 8;
-        u |= bs.get(p + 10).map(|&v| v).unwrap_or(0) as u128;
-        u <<= 8;
-        u |= bs.get(p + 11).map(|&v| v).unwrap_or(0) as u128;
-
-        u <<= 32;
-        u |= n as u128;
-        words.push(u);
-    }
-}
-
-pub fn vec_u128_to_u8(data: &Vec<u128>) -> (Vec<u8>, Vec<u8>) {
+fn vec_to_u8(data: &Vec<[u8; 20]>) -> (Vec<u8>, Vec<u8>) {
     let capacity = 32 / 8 * data.len() as usize;
     let mut gram = Vec::<u8>::with_capacity(capacity);
     let mut lnum = Vec::<u8>::with_capacity(capacity);
     for &value in data {
-        gram.push((value >> 120) as u8);
-        gram.push((value >> 112) as u8);
-        gram.push((value >> 104) as u8);
-        gram.push((value >> 96) as u8);
-
-        gram.push((value >> 88) as u8);
-        gram.push((value >> 80) as u8);
-        gram.push((value >> 72) as u8);
-        gram.push((value >> 64) as u8);
-
-        gram.push((value >> 56) as u8);
-        gram.push((value >> 48) as u8);
-        gram.push((value >> 40) as u8);
-        gram.push((value >> 32) as u8);
-
-        lnum.push((value >> 24) as u8);
-        lnum.push((value >> 16) as u8);
-        lnum.push((value >> 8) as u8);
-        lnum.push((value >> 0) as u8);
+        for i in 0..12 {
+            gram.push(value[i]);
+        }
+        for i in 12..20 {
+            lnum.push(value[i]);
+        }
     }
     (gram, lnum)
 }
 
-async fn setup_reijiro() -> Result<(), sqlx::Error> {
+fn add_segments(words: &mut Vec<[u8; 20]>, line: &String, offset: u32) {
+    let bs = line.as_bytes();
+    for p in 0..bs.len() {
+        let mut u = [0; 20];
+        for i in 0..12 {
+            u[i] = bs.get(p + i).map(|&v| v).unwrap_or(0);
+        }
+        u[12] = (offset >> 24) as u8;
+        u[13] = (offset >> 16) as u8;
+        u[14] = (offset >> 8) as u8;
+        u[15] = (offset >> 0) as u8;
+        let len = line.len();
+        u[16] = (len >> 24) as u8;
+        u[17] = (len >> 16) as u8;
+        u[18] = (len >> 8) as u8;
+        u[19] = (len >> 0) as u8;
+        words.push(u);
+    }
+}
+
+fn setup_reijiro() {
     println!("building the index of {}", REIJIRO);
     let sjis = fs::read(REIJIRO).unwrap();
     let (utf8, _, _) = encoding_rs::SHIFT_JIS.decode(&sjis);
@@ -209,55 +211,47 @@ async fn setup_reijiro() -> Result<(), sqlx::Error> {
         }
     }
 
-    let mut words: Vec<u128> = vec![];
-    let pool = SqlitePool::connect(format!("sqlite:{}?mode=rwc", REIJIRO_DB).as_str()).await?;
-    let mut conn = pool.acquire().await?;
-    sqlx::query("CREATE TABLE lines(id INTEGER PRIMARY KEY AUTOINCREMENT, line TEXT);")
-        .execute(&mut conn)
-        .await?;
-    let mut tx = pool.begin().await?;
-    for (i, line) in text[1..].lines().map(|v| v.to_string()).enumerate() {
-        let query_str = format!("INSERT INTO lines(id, line) VALUES ({},?);", i);
-        let mut query = sqlx::query(&query_str);
-        query = query.bind(&line);
-        tx.execute(query).await?;
-        add_segments(&mut words, &line, i);
+    let mut words: Vec<[u8; 20]> = vec![];
+    let mut acc = 0u32;
+    for line in text[1..].lines().map(|v| v.to_string()) {
+        add_segments(&mut words, &line, acc);
+        acc += line.len() as u32;
+        acc += "\n".len() as u32;
     }
-    tx.commit().await?;
     words.sort();
     words.dedup();
-    let (gram, idx) = vec_u128_to_u8(&words);
+    let (gram, idx) = vec_to_u8(&words);
+    fs::write(REIJIRO_TEXT, &text[1..]).unwrap();
     fs::write(REIJIRO_NGRAM, &gram).unwrap();
     fs::write(REIJIRO_INDEX, &idx).unwrap();
     println!("indexing finished successfully.");
-    Ok(())
 }
 
-async fn check_reijiro() {
+fn check_reijiro() {
     let source_path = Path::new(REIJIRO);
     let ngram_path = Path::new(REIJIRO_NGRAM);
     let index_path = Path::new(REIJIRO_INDEX);
-    let db_path = Path::new(REIJIRO_DB);
+    let text_path = Path::new(REIJIRO_TEXT);
     println!("{} exists:{}", REIJIRO, source_path.exists());
     println!("{} exists:{}", REIJIRO_NGRAM, ngram_path.exists());
     println!("{} exists:{}", REIJIRO_INDEX, index_path.exists());
-    println!("{} exists:{}", REIJIRO_DB, db_path.exists());
+    println!("{} exists:{}", REIJIRO_TEXT, text_path.exists());
     if source_path.exists() && !index_path.exists() {
-        setup_reijiro().await.unwrap();
+        setup_reijiro();
     }
 }
 
-async fn check_eijiro() {
+fn check_eijiro() {
     let source_path = Path::new(EIJIRO);
     let ngram_path = Path::new(EIJIRO_NGRAM);
     let index_path = Path::new(EIJIRO_INDEX);
-    let db_path = Path::new(EIJIRO_DB);
+    let text_path = Path::new(EIJIRO_TEXT);
     println!("{} exists:{}", EIJIRO, source_path.exists());
     println!("{} exists:{}", EIJIRO_NGRAM, ngram_path.exists());
     println!("{} exists:{}", EIJIRO_INDEX, index_path.exists());
-    println!("{} exists:{}", EIJIRO_DB, db_path.exists());
+    println!("{} exists:{}", EIJIRO_TEXT, text_path.exists());
     if source_path.exists() && !index_path.exists() {
-        setup_eijiro().await.unwrap();
+        setup_eijiro();
     }
 }
 
@@ -275,11 +269,12 @@ fn reorder<'a>(hits: &Vec<&'a str>, input: &String) -> Vec<&'a str> {
     a
 }
 
-#[tokio::main]
-async fn main() -> Result<(), sqlx::Error> {
+fn main() {
     env_logger::init();
-    check_eijiro().await;
-    check_reijiro().await;
+    // setup_edict();
+    // setup_subtitle();
+    check_eijiro();
+    check_reijiro();
 
     println!("\x1b[0m\x1b[1;32m検索文字\x1b[0m(Enter)で検索");
     println!("\x1b[1;33md\x1b[0mで画面をスクロール \x1b[1;33mq\x1b[0mで次の辞書");
@@ -291,26 +286,26 @@ async fn main() -> Result<(), sqlx::Error> {
             continue;
         }
 
-        edict_eiji(&input).await;
+        edict_eiji(&input);
         {
             let nums = ngram_search(&input, SUBTITLE_NGRAM, SUBTITLE_INDEX);
-            let hits = filter(&input, &nums, SUBTITLE_DB).await.unwrap();
+            let hits = filter(&input, &nums, SUBTITLE_TEXT);
             print_results(decorate(&input, hits));
         }
-        if Path::new(REIJIRO_DB).exists() {
+        if Path::new(REIJIRO_TEXT).exists() {
             let nums = ngram_search(&input, REIJIRO_NGRAM, REIJIRO_INDEX);
-            let hits = filter(&input, &nums, REIJIRO_DB).await.unwrap();
+            let hits = filter(&input, &nums, REIJIRO_TEXT);
             print_results(decorate(&input, hits));
         }
     }
 }
 
-async fn edict_eiji(input: &String) {
+fn edict_eiji(input: &String) {
     let nums = ngram_search(&input, EDICT_NGRAM, EDICT_INDEX);
-    let mut hits = filter(&input, &nums, EDICT_DB).await.unwrap();
-    if Path::new(EIJIRO_DB).exists() {
+    let mut hits = filter(&input, &nums, EDICT_TEXT);
+    if Path::new(EIJIRO_TEXT).exists() {
         let nums = ngram_search(&input, EIJIRO_NGRAM, EIJIRO_INDEX);
-        let mut eiji_hits = filter(&input, &nums, EIJIRO_DB).await.unwrap();
+        let mut eiji_hits = filter(&input, &nums, EIJIRO_TEXT);
         hits.append(&mut eiji_hits)
     }
     print_results(decorate(&input, hits));
@@ -363,33 +358,28 @@ fn print_results(results: Vec<String>) {
     }
 }
 
-async fn filter(input: &str, nums: &Vec<u32>, db: &str) -> Result<Vec<String>, sqlx::Error> {
+fn filter(input: &str, nums: &Vec<(u32, u32)>, text_file: &str) -> Vec<String> {
     debug!("{:?} given:{}", nums, nums.len());
     if nums.len() == 0 {
-        return Ok(vec![]);
+        return vec![];
     }
 
-    #[derive(sqlx::FromRow)]
-    struct Line {
-        line: String,
-    }
-    let params = format!("?{}", ", ?".repeat(nums.len() - 1));
-    let query_str = format!("SELECT line FROM lines WHERE id IN ( { } )", params);
-    let mut query = sqlx::query_as::<_, Line>(&query_str);
-    for i in nums {
-        query = query.bind(i);
-    }
-    let pool = SqlitePool::connect(format!("sqlite:{}?mode=rwc", db).as_str()).await?;
-    let rows = query.fetch_all(&pool).await?;
-
-    let hits = &rows
+    let lines = nums
         .par_iter()
-        .map(|r| r.line.as_str())
-        .filter(|l| l.contains(input))
-        .collect::<Vec<&str>>();
+        .map(|&(offset, len)| {
+            let mut txtf = File::open(text_file).unwrap();
+            txtf.seek(SeekFrom::Start(offset as u64)).unwrap();
+            let mut line = vec![0u8; len as usize];
+            txtf.read(&mut line[..]).unwrap();
+            String::from_utf8(line).unwrap()
+        })
+        .collect::<Vec<String>>();
 
-    let results = hits.iter().map(|s| s.to_string()).collect();
-    Ok(results)
+    lines
+        .par_iter()
+        .filter(|l| l.contains(input))
+        .map(|s| s.to_string())
+        .collect()
 }
 
 fn get_input(prompt: &str) -> String {
@@ -408,7 +398,7 @@ fn get_input(prompt: &str) -> String {
         .replace("📙", "\t")
 }
 
-fn ngram_search(keyword: &String, ngram: &str, index: &str) -> Vec<u32> {
+fn ngram_search(keyword: &String, ngram: &str, index: &str) -> Vec<(u32, u32)> {
     fn to_u32(b: &[u8; 4]) -> u32 {
         let mut n = 0u32;
         n |= b[0] as u32;
@@ -432,15 +422,18 @@ fn ngram_search(keyword: &String, ngram: &str, index: &str) -> Vec<u32> {
         search_block[i] = v;
     }
     let mut ngramf = File::open(ngram).unwrap();
-    let begin = limit_left(&mut ngramf, &search_block) / BLOCK_SIZE * 4;
-    let end = limit_right(&mut ngramf, &search_block) / BLOCK_SIZE * 4;
+    let begin = limit_left(&mut ngramf, &search_block) / BLOCK_SIZE * 8;
+    let end = limit_right(&mut ngramf, &search_block) / BLOCK_SIZE * 8;
+
     let mut indexf = File::open(index).unwrap();
     let mut nums = vec![];
-    for p in (begin..end).step_by(4) {
-        let mut num = [0u8; 4];
+    for p in (begin..end).step_by(8) {
+        let (mut offset, mut len) = ([0u8; 4], [0u8; 4]);
         indexf.seek(SeekFrom::Start(p)).unwrap();
-        indexf.read_exact(&mut num).unwrap();
-        nums.push(to_u32(&num));
+        indexf.read_exact(&mut offset).unwrap();
+        indexf.seek(SeekFrom::Start(p + 4)).unwrap();
+        indexf.read_exact(&mut len).unwrap();
+        nums.push((to_u32(&offset), to_u32(&len)));
     }
     nums.sort();
     nums.dedup();
