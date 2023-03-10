@@ -7,6 +7,7 @@ use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
+use std::io::BufWriter;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
@@ -86,7 +87,7 @@ const SUBTITLE: &str = "eiji-dict/train";
 fn setup_subtitle() {
     println!("building the index of {}", SUBTITLE);
     let utf8 = fs::read_to_string(SUBTITLE).unwrap();
-    let mut words: Vec<[u8; 20]> = vec![];
+    let mut words: Vec<[u8; 20]> = Vec::with_capacity(utf8.len());
     let mut acc = 0u32;
     for line in utf8.lines().map(|v| v.to_string()) {
         add_segments(&mut words, &line, acc);
@@ -95,14 +96,12 @@ fn setup_subtitle() {
     }
     words.sort();
     words.dedup();
-    let (gram, idx) = vec_to_u8(&words);
+    write_indices(words, SUBTITLE_NGRAM, SUBTITLE_INDEX);
     fs::write(
         SUBTITLE_TEXT,
         &utf8.lines().collect::<Vec<&str>>().join("\n"),
     )
     .unwrap();
-    fs::write(SUBTITLE_NGRAM, &gram).unwrap();
-    fs::write(SUBTITLE_INDEX, &idx).unwrap();
     println!("indexing finished successfully.");
 }
 
@@ -110,7 +109,7 @@ const EDICT: &str = "eiji-dict/edict.tab";
 fn setup_edict() {
     println!("building the index of {}", EDICT);
     let utf8 = fs::read_to_string(EDICT).unwrap();
-    let mut words: Vec<[u8; 20]> = vec![];
+    let mut words: Vec<[u8; 20]> = Vec::with_capacity(utf8.len());
     let mut acc = 0u32;
     for line in utf8.lines().map(|v| v.to_string()) {
         add_segments(&mut words, &line, acc);
@@ -119,10 +118,8 @@ fn setup_edict() {
     }
     words.sort();
     words.dedup();
-    let (gram, idx) = vec_to_u8(&words);
+    write_indices(words, EDICT_NGRAM, EDICT_INDEX);
     fs::write(EDICT_TEXT, &utf8.lines().collect::<Vec<&str>>().join("\n")).unwrap();
-    fs::write(EDICT_NGRAM, &gram).unwrap();
-    fs::write(EDICT_INDEX, &idx).unwrap();
     println!("indexing finished successfully.");
 }
 
@@ -136,7 +133,7 @@ fn setup_eijiro() {
         buf.append(&line[3..separator], &line[separator + 3..]);
     }
 
-    let mut words: Vec<[u8; 20]> = vec![];
+    let mut words: Vec<[u8; 20]> = Vec::with_capacity(buf.text.len());
     let mut acc = 0u32;
     for line in buf.text[1..].lines().map(|v| v.to_string()) {
         add_segments(&mut words, &line, acc);
@@ -145,46 +142,9 @@ fn setup_eijiro() {
     }
     words.sort();
     words.dedup();
-    let (gram, idx) = vec_to_u8(&words);
+    write_indices(words, EIJIRO_NGRAM, EIJIRO_INDEX);
     fs::write(EIJIRO_TEXT, &buf.text[1..]).unwrap();
-    fs::write(EIJIRO_NGRAM, &gram).unwrap();
-    fs::write(EIJIRO_INDEX, &idx).unwrap();
     println!("indexing finished successfully.");
-}
-
-fn vec_to_u8(data: &Vec<[u8; 20]>) -> (Vec<u8>, Vec<u8>) {
-    let capacity = 32 / 8 * data.len() as usize;
-    let mut gram = Vec::<u8>::with_capacity(capacity);
-    let mut lnum = Vec::<u8>::with_capacity(capacity);
-    for &value in data {
-        for i in 0..12 {
-            gram.push(value[i]);
-        }
-        for i in 12..20 {
-            lnum.push(value[i]);
-        }
-    }
-    (gram, lnum)
-}
-
-fn add_segments(words: &mut Vec<[u8; 20]>, line: &String, offset: u32) {
-    let bs = line.as_bytes();
-    for p in 0..bs.len() {
-        let mut u = [0; 20];
-        for i in 0..12 {
-            u[i] = bs.get(p + i).map(|&v| v).unwrap_or(0);
-        }
-        u[12] = (offset >> 24) as u8;
-        u[13] = (offset >> 16) as u8;
-        u[14] = (offset >> 8) as u8;
-        u[15] = (offset >> 0) as u8;
-        let len = line.len();
-        u[16] = (len >> 24) as u8;
-        u[17] = (len >> 16) as u8;
-        u[18] = (len >> 8) as u8;
-        u[19] = (len >> 0) as u8;
-        words.push(u);
-    }
 }
 
 fn setup_reijiro() {
@@ -211,7 +171,7 @@ fn setup_reijiro() {
         }
     }
 
-    let mut words: Vec<[u8; 20]> = vec![];
+    let mut words: Vec<[u8; 20]> = Vec::with_capacity(text.len());
     let mut acc = 0u32;
     for line in text[1..].lines().map(|v| v.to_string()) {
         add_segments(&mut words, &line, acc);
@@ -220,11 +180,38 @@ fn setup_reijiro() {
     }
     words.sort();
     words.dedup();
-    let (gram, idx) = vec_to_u8(&words);
+    write_indices(words, REIJIRO_NGRAM, REIJIRO_INDEX);
     fs::write(REIJIRO_TEXT, &text[1..]).unwrap();
-    fs::write(REIJIRO_NGRAM, &gram).unwrap();
-    fs::write(REIJIRO_INDEX, &idx).unwrap();
     println!("indexing finished successfully.");
+}
+
+fn write_indices(data: Vec<[u8; 20]>, ngram: &str, index: &str) {
+    let mut ngramf = BufWriter::new(fs::File::create(ngram).unwrap());
+    let mut indexf = BufWriter::new(fs::File::create(index).unwrap());
+    for &value in &data {
+        ngramf.write(&value[0..12]).unwrap();
+        indexf.write(&value[12..20]).unwrap();
+    }
+}
+
+fn add_segments(words: &mut Vec<[u8; 20]>, line: &String, offset: u32) {
+    let bs = line.as_bytes();
+    for p in 0..bs.len() {
+        let mut u = [0; 20];
+        for i in 0..12 {
+            u[i] = bs.get(p + i).map(|&v| v).unwrap_or(0);
+        }
+        u[12] = (offset >> 24) as u8;
+        u[13] = (offset >> 16) as u8;
+        u[14] = (offset >> 8) as u8;
+        u[15] = (offset >> 0) as u8;
+        let len = line.len();
+        u[16] = (len >> 24) as u8;
+        u[17] = (len >> 16) as u8;
+        u[18] = (len >> 8) as u8;
+        u[19] = (len >> 0) as u8;
+        words.push(u);
+    }
 }
 
 fn check_reijiro() {
