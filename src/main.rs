@@ -223,7 +223,7 @@ fn check_reijiro() {
     println!("{} exists:{}", REIJIRO_NGRAM, ngram_path.exists());
     println!("{} exists:{}", REIJIRO_INDEX, index_path.exists());
     println!("{} exists:{}", REIJIRO_TEXT, text_path.exists());
-    if source_path.exists() && !index_path.exists() {
+    if source_path.exists() && !text_path.exists() {
         setup_reijiro();
     }
 }
@@ -237,7 +237,7 @@ fn check_eijiro() {
     println!("{} exists:{}", EIJIRO_NGRAM, ngram_path.exists());
     println!("{} exists:{}", EIJIRO_INDEX, index_path.exists());
     println!("{} exists:{}", EIJIRO_TEXT, text_path.exists());
-    if source_path.exists() && !index_path.exists() {
+    if source_path.exists() && !text_path.exists() {
         setup_eijiro();
     }
 }
@@ -443,6 +443,9 @@ fn limit_right(index: &mut File, head: &[u8; BLOCK_SIZE as usize]) -> u64 {
     let (mut fr, mut to) = (0u64, blocks * BLOCK_SIZE);
     let mut cursor = (blocks / 2 - 1) * BLOCK_SIZE;
     loop {
+        if cursor == 0 || cursor == (blocks - 1) * BLOCK_SIZE {
+            return cursor + BLOCK_SIZE;
+        }
         index.seek(SeekFrom::Start(cursor)).unwrap();
         index.read_exact(&mut word).unwrap();
         index.seek(SeekFrom::Start(cursor + BLOCK_SIZE)).unwrap();
@@ -457,9 +460,6 @@ fn limit_right(index: &mut File, head: &[u8; BLOCK_SIZE as usize]) -> u64 {
 
         debug!("{:?}", String::from_utf8(word.iter().map(|&v| v).collect()));
         if word <= *head && *head < next {
-            return cursor + BLOCK_SIZE;
-        }
-        if cursor == 0 || cursor == (blocks - 1) * BLOCK_SIZE {
             return cursor + BLOCK_SIZE;
         }
         if *head < word {
@@ -478,6 +478,9 @@ fn limit_left(index: &mut File, head: &[u8; BLOCK_SIZE as usize]) -> u64 {
     let (mut fr, mut to) = (0u64, blocks * BLOCK_SIZE);
     let mut cursor = (blocks / 2 - 1) * BLOCK_SIZE;
     loop {
+        if cursor == 0 || cursor == (blocks - 1) * BLOCK_SIZE {
+            return cursor + BLOCK_SIZE;
+        }
         index.seek(SeekFrom::Start(cursor)).unwrap();
         index.read_exact(&mut word).unwrap();
         index.seek(SeekFrom::Start(cursor + BLOCK_SIZE)).unwrap();
@@ -492,9 +495,6 @@ fn limit_left(index: &mut File, head: &[u8; BLOCK_SIZE as usize]) -> u64 {
 
         debug!("{:?}", String::from_utf8(word.iter().map(|&v| v).collect()));
         if word < *head && *head <= next {
-            return cursor + BLOCK_SIZE;
-        }
-        if cursor == 0 || cursor == (blocks - 1) * BLOCK_SIZE {
             return cursor + BLOCK_SIZE;
         }
         if *head <= word {
