@@ -158,5 +158,12 @@ mod tests {
             assert_eq!(findings[0], "a happy new year!\t/ə hæpiː njuː -/ø häp<ħ>ï</ħ> nj<ħ>u</ħ> -/ 賀正 [がしょう],賀正 [がせい]");
             assert_eq!(findings[95], "yuck!\t/-/-/ 最低 [さいてい]");
         }
+        {
+            let keyword = String::from_str("\t\t\t!").unwrap();
+            let occurences = ngram_search(&keyword, super::EDICT_NGRAM, super::EDICT_INDEX);
+            assert_eq!(occurences, vec![]);
+            let findings = load_then_filter(&keyword, &occurences, super::EDICT_TEXT);
+            assert_eq!(findings, Vec::<String>::new());
+        }
     }
 }

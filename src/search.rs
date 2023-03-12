@@ -7,9 +7,8 @@ pub fn ngram_search(keyword: &String, ngram: &str, index: &str) -> Vec<(u32, u32
     if keyword.is_empty() {
         return vec![];
     }
-    let c = keyword.as_bytes();
     let mut search_block = [0u8; BLOCK_SIZE as usize];
-    for (i, &v) in c.iter().enumerate() {
+    for (i, &v) in keyword.as_bytes().iter().enumerate() {
         if i > search_block.len() - 1 {
             break;
         }
@@ -88,13 +87,10 @@ fn limit_right(index: &mut File, head: &[u8; BLOCK_SIZE as usize]) -> u64 {
     let (mut fr, mut to) = (0u64, blocks * BLOCK_SIZE);
     let mut cursor = (blocks / 2 - 1) * BLOCK_SIZE;
     loop {
-        if cursor == 0 || cursor == (blocks - 1) * BLOCK_SIZE {
-            return cursor + BLOCK_SIZE;
-        }
         index.seek(SeekFrom::Start(cursor)).unwrap();
         index.read_exact(&mut word).unwrap();
         index.seek(SeekFrom::Start(cursor + BLOCK_SIZE)).unwrap();
-        index.read_exact(&mut next).unwrap();
+        index.read(&mut next).unwrap();
 
         for (i, &c) in head.iter().enumerate().rev() {
             if c != 0 {
@@ -109,10 +105,18 @@ fn limit_right(index: &mut File, head: &[u8; BLOCK_SIZE as usize]) -> u64 {
         }
         if *head < word {
             to = cursor;
-            cursor -= (cursor - fr) / BLOCK_SIZE / 2 * BLOCK_SIZE;
+            let update = (cursor - fr) / BLOCK_SIZE / 2 * BLOCK_SIZE;
+            if update == 0 {
+                return cursor;
+            }
+            cursor -= update;
         } else if word <= *head {
             fr = cursor;
-            cursor += (to - cursor) / BLOCK_SIZE / 2 * BLOCK_SIZE;
+            let update = (to - cursor) / BLOCK_SIZE / 2 * BLOCK_SIZE;
+            if update == 0 {
+                return cursor;
+            }
+            cursor += update;
         }
     }
 }
@@ -123,13 +127,10 @@ fn limit_left(index: &mut File, head: &[u8; BLOCK_SIZE as usize]) -> u64 {
     let (mut fr, mut to) = (0u64, blocks * BLOCK_SIZE);
     let mut cursor = (blocks / 2 - 1) * BLOCK_SIZE;
     loop {
-        if cursor == 0 || cursor == (blocks - 1) * BLOCK_SIZE {
-            return cursor + BLOCK_SIZE;
-        }
         index.seek(SeekFrom::Start(cursor)).unwrap();
         index.read_exact(&mut word).unwrap();
         index.seek(SeekFrom::Start(cursor + BLOCK_SIZE)).unwrap();
-        index.read_exact(&mut next).unwrap();
+        index.read(&mut next).unwrap();
 
         for (i, &c) in head.iter().enumerate().rev() {
             if c != 0 {
@@ -144,10 +145,18 @@ fn limit_left(index: &mut File, head: &[u8; BLOCK_SIZE as usize]) -> u64 {
         }
         if *head <= word {
             to = cursor;
-            cursor -= (cursor - fr) / BLOCK_SIZE / 2 * BLOCK_SIZE;
+            let update = (cursor - fr) / BLOCK_SIZE / 2 * BLOCK_SIZE;
+            if update == 0 {
+                return cursor;
+            }
+            cursor -= update;
         } else if word < *head {
             fr = cursor;
-            cursor += (to - cursor) / BLOCK_SIZE / 2 * BLOCK_SIZE;
+            let update = (to - cursor) / BLOCK_SIZE / 2 * BLOCK_SIZE;
+            if update == 0 {
+                return cursor;
+            }
+            cursor += update;
         }
     }
 }
