@@ -5,6 +5,65 @@ use std::io::Write;
 
 use crate::eijiro_text_appender;
 
+pub fn _setup_tanaka_examples() {
+    const TANAKA: &str = "eiji-dict/tanaka-examples.utf";
+    println!("building the index of {}", TANAKA);
+    let utf8 = fs::read_to_string(TANAKA).unwrap();
+    let utf8 = utf8
+        .lines()
+        .filter(|s| s.starts_with("A: "))
+        .map(|s| &s[3..])
+        .map(|s| s.rsplitn(2, '#').collect::<Vec<&str>>()[1])
+        .collect::<Vec<&str>>()
+        .join("\n");
+    let mut words: Vec<[u8; 20]> = Vec::with_capacity(utf8.len());
+    let mut acc = 0u32;
+    for line in utf8.lines().map(|v| v.to_string()) {
+        add_segments(&mut words, &line, acc);
+        acc += line.len() as u32;
+        acc += "\n".len() as u32;
+    }
+    words.sort();
+    words.dedup();
+    write_indices(words, super::TANAKA_NGRAM, super::TANAKA_INDEX);
+    fs::write(
+        super::TANAKA_TEXT,
+        &utf8.lines().collect::<Vec<&str>>().join("\n"),
+    )
+    .unwrap();
+    println!("indexing finished successfully.");
+}
+
+pub fn _setup_ted() {
+    const EN: &str = "eiji-dict/ted_train_en-ja.raw.en";
+    const JA: &str = "eiji-dict/ted_train_en-ja.raw.ja";
+    println!("building the index of {} and {}", EN, JA);
+    let en = fs::read_to_string(EN).unwrap();
+    let ja = fs::read_to_string(JA).unwrap();
+    let utf8 = en
+        .lines()
+        .zip(ja.lines())
+        .map(|(x, y)| [x, y].join("\t"))
+        .collect::<Vec<String>>()
+        .join("\n");
+    let mut words: Vec<[u8; 20]> = Vec::with_capacity(utf8.len());
+    let mut acc = 0u32;
+    for line in utf8.lines().map(|v| v.to_string()) {
+        add_segments(&mut words, &line, acc);
+        acc += line.len() as u32;
+        acc += "\n".len() as u32;
+    }
+    words.sort();
+    words.dedup();
+    write_indices(words, super::TED_NGRAM, super::TED_INDEX);
+    fs::write(
+        super::TED_TEXT,
+        &utf8.lines().collect::<Vec<&str>>().join("\n"),
+    )
+    .unwrap();
+    println!("indexing finished successfully.");
+}
+
 pub fn _setup_subtitle() {
     const SUBTITLE: &str = "eiji-dict/train";
     println!("building the index of {}", SUBTITLE);

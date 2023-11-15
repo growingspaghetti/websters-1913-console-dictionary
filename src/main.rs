@@ -28,6 +28,14 @@ const REIJIRO_TEXT: &str = "REIJI-1441_TEXT";
 const REIJIRO_NGRAM: &str = "REIJI-1441_NGRAM";
 const REIJIRO_INDEX: &str = "REIJI-1441_INDEX";
 
+const TANAKA_NGRAM: &str = "TANAKA_NGRAM";
+const TANAKA_INDEX: &str = "TANAKA_INDEX";
+const TANAKA_TEXT: &str = "TANAKA_TEXT";
+
+const TED_NGRAM: &str = "TED_NGRAM";
+const TED_INDEX: &str = "TED_INDEX";
+const TED_TEXT: &str = "TED_TEXT";
+
 fn check_reijiro() {
     let source_path = Path::new(REIJIRO);
     let ngram_path = Path::new(REIJIRO_NGRAM);
@@ -60,6 +68,8 @@ fn main() {
     env_logger::init();
     // indexing::_setup_edict();
     // indexing::_setup_subtitle();
+    // indexing::_setup_ted();
+    // indexing::_setup_tanaka_examples();
     check_eijiro();
     check_reijiro();
 
@@ -82,6 +92,27 @@ fn main() {
         if Path::new(REIJIRO_TEXT).exists() {
             let nums = search::ngram_search(&input, REIJIRO_NGRAM, REIJIRO_INDEX);
             let hits = search::load_then_filter(&input, &nums, REIJIRO_TEXT);
+            print::print_to_console(&input, hits);
+        }
+        struct Source<'a> {
+            ngram_file: &'a str,
+            index_file: &'a str,
+            text_file: &'a str,
+        }
+        for src in &[
+            &Source {
+                ngram_file: TANAKA_NGRAM,
+                index_file: TANAKA_INDEX,
+                text_file: TANAKA_TEXT,
+            },
+            &Source {
+                ngram_file: TED_NGRAM,
+                index_file: TED_INDEX,
+                text_file: TED_TEXT,
+            },
+        ] {
+            let nums = search::ngram_search(&input, &src.ngram_file, &src.index_file);
+            let hits = search::load_then_filter(&input, &nums, &src.text_file);
             print::print_to_console(&input, hits);
         }
     }
